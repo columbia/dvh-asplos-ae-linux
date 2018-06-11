@@ -24,6 +24,7 @@
 #include <linux/slab.h>
 #include <linux/export.h>
 #include <linux/rculist.h>
+#include <linux/highmem.h>
 
 #include <trace/events/kvm.h>
 
@@ -112,12 +113,65 @@ int kvm_irq_delivery_to_apic(struct kvm *kvm, struct kvm_lapic *src,
 	return r;
 }
 
+/* Posted-Interrupt Descriptor */
+/* copied from arch/x86/kvm/vmx.c */
+struct pi_desc {
+	u32 pir[8];     /* Posted interrupt requested */
+	union {
+		struct {
+				/* bit 256 - Outstanding Notification */
+			u16	on	: 1,
+				/* bit 257 - Suppress Notification */
+				sn	: 1,
+				/* bit 271:258 - Reserved */
+				rsvd_1	: 14;
+				/* bit 279:272 - Notification Vector */
+			u8	nv;
+				/* bit 287:280 - Reserved */
+			u8	rsvd_2;
+				/* bit 319:288 - Notification Destination */
+			u32	ndst;
+		};
+		u64 control;
+	};
+	u32 rsvd[6];
+} __aligned(64);
+
+static int pi_test_and_set_pir(int vector, struct pi_desc *pi_desc)
+{
+	return test_and_set_bit(vector, (unsigned long *)pi_desc->pir);
+}
+
+#define POSTED_INTR_ON  0
+static bool pi_test_and_set_on(struct pi_desc *pi_desc)
+{
+	return test_and_set_bit(POSTED_INTR_ON,
+			(unsigned long *)&pi_desc->control);
+}
+
 void kvm_set_msi_irq(struct kvm *kvm, struct kvm_kernel_irq_routing_entry *e,
 		     struct kvm_lapic_irq *irq)
 {
+	struct pi_desc *pi_desc;
+	struct page *page;
+	struct pi_desc *pi_desc_host = 0;
+
 	trace_kvm_msi_set_irq(e->msi.address_lo | (kvm->arch.x2apic_format ?
 	                                     (u64)e->msi.address_hi << 32 : 0),
 	                      e->msi.data);
+
+	pi_desc = (struct pi_desc*)e->pi_desc_addr;
+	if (pi_desc) {
+		/* FIXME: we always have at least one vcpu... */
+		page = kvm_vcpu_gpa_to_page(kvm->vcpus[0], (u64)pi_desc);
+		if (is_error_page(page))
+			return;
+
+		pi_desc_host = kmap(page);
+		pi_desc_host =
+			(struct pi_desc *)((void *)pi_desc_host  +
+			(unsigned long)((u64)pi_desc & (PAGE_SIZE - 1)));
+	}
 
 	irq->dest_id = (e->msi.address_lo &
 			MSI_ADDR_DEST_ID_MASK) >> MSI_ADDR_DEST_ID_SHIFT;
@@ -132,6 +186,32 @@ void kvm_set_msi_irq(struct kvm *kvm, struct kvm_kernel_irq_routing_entry *e,
 		& MSI_ADDR_REDIRECTION_LOWPRI) > 0);
 	irq->level = 1;
 	irq->shorthand = 0;
+
+	if (pi_desc_host) {
+		bool urgent;
+
+		pi_test_and_set_pir(irq->vector, pi_desc_host);
+
+		/*
+		 * FIXME: get urgent bit from IRTE. Ignore for now since Linux
+		 * always set it zero in intel_ir_set_vcpu_affinity().
+		 */
+		urgent = false;
+		if (!pi_desc_host->on && (urgent || !pi_desc_host->sn)) {
+			pi_test_and_set_on(pi_desc_host);
+			irq->dest_id = pi_desc_host->ndst;
+			irq->vector = pi_desc_host->nv;
+			irq->delivery_mode = 0;
+			irq->msi_redir_hint = 0;
+			irq->trig_mode = 0;
+			irq->level = 1;
+		} else {
+			/* HACK: just not to send irq in __apic_accept_irq() */
+			irq->trig_mode = 1;
+			irq->level = 0;
+		}
+		kunmap(page);
+	}
 }
 EXPORT_SYMBOL_GPL(kvm_set_msi_irq);
 
