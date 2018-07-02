@@ -35,6 +35,7 @@
 #include <asm/asm.h>
 #include <asm/kvm_page_track.h>
 #include <asm/hyperv-tlfs.h>
+#include <asm/vmx.h>
 
 #define KVM_MAX_VCPUS 288
 #define KVM_SOFT_MAX_VCPUS 240
@@ -896,6 +897,8 @@ struct kvm_vcpu_stat {
 	u64 irq_injections;
 	u64 nmi_injections;
 	u64 req_event;
+
+	u64 exit_handler[EXIT_REASON_XRSTORS+1];
 };
 
 struct x86_instruction_info;

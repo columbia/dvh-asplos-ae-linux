@@ -9781,9 +9781,10 @@ static int vmx_handle_exit(struct kvm_vcpu *vcpu)
 	}
 
 	if (exit_reason < kvm_vmx_max_exit_handlers
-	    && kvm_vmx_exit_handlers[exit_reason])
+	    && kvm_vmx_exit_handlers[exit_reason]) {
+		++vcpu->stat.exit_handler[exit_reason];
 		return kvm_vmx_exit_handlers[exit_reason](vcpu);
-	else {
+	} else {
 		vcpu_unimpl(vcpu, "vmx: unexpected exit reason 0x%x\n",
 				exit_reason);
 		kvm_queue_exception(vcpu, UD_VECTOR);
