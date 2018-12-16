@@ -404,6 +404,8 @@
 #define  PCI_EA_IS_64		0x00000002	/* 64-bit field flag */
 #define  PCI_EA_FIELD_MASK	0xfffffffc	/* For Base & Max Offset */
 
+#define PCI_CAP_MI_SIZEOF	8
+
 /* PCI-X registers (Type 0 (non-bridge) devices) */
 
 #define PCI_X_CMD		2	/* Modes & Features */

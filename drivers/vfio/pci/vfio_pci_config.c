@@ -64,7 +64,7 @@ static const u8 pci_cap_length[PCI_CAP_ID_MAX + 1] = {
 	[PCI_CAP_ID_MSIX]	= PCI_CAP_MSIX_SIZEOF,
 	[PCI_CAP_ID_SATA]	= 0xFF,
 	[PCI_CAP_ID_AF]		= PCI_CAP_AF_SIZEOF,
-	[PCI_CAP_ID_MI]		= 0xFF,
+	[PCI_CAP_ID_MI]		= PCI_CAP_MI_SIZEOF,
 };
 
 /*
