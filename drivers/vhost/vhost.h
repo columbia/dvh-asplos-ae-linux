@@ -144,6 +144,8 @@ struct vhost_virtqueue {
 	bool user_be;
 #endif
 	u32 busyloop_timeout;
+
+	struct iovec log_iov[0x80];
 };
 
 struct vhost_msg_node {
@@ -166,6 +168,7 @@ struct vhost_dev {
 	struct list_head read_list;
 	struct list_head pending_list;
 	wait_queue_head_t wait;
+    void __user *iov_base_user;
 };
 
 void vhost_dev_init(struct vhost_dev *, struct vhost_virtqueue **vqs, int nvqs);
