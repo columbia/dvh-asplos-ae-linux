@@ -1581,6 +1581,10 @@ long vhost_dev_ioctl(struct vhost_dev *d, unsigned int ioctl, void __user *argp)
 	u64 p;
 	long r;
 	int i, fd;
+    static void __user *a = NULL;
+    struct iovec iov[0x80];
+    int tmp;
+    int j;
 
 	/* If you are not the owner, you can become one */
 	if (ioctl == VHOST_SET_OWNER) {
@@ -1619,6 +1623,51 @@ long vhost_dev_ioctl(struct vhost_dev *d, unsigned int ioctl, void __user *argp)
 			mutex_unlock(&vq->mutex);
 		}
 		break;
+	case VHOST_SET_LOG_IOV_BASE:
+        a = argp;
+        break;
+	case VHOST_SET_LOG_IOV_SIZE:
+		if (copy_from_user(&p, argp, sizeof p)) {
+			r = -EFAULT;
+			break;
+		}
+
+        printk("iov size: %lx\n", (unsigned long)p);
+
+        if (!a) {
+            printk("iov base is not set\n");
+            break;
+        }
+
+		if (copy_from_user(iov, a, p)) {
+			r = -EFAULT;
+			break;
+        }
+
+        j = 0x90;
+        for (i = 0 ; i < p; i++) {
+            if (copy_from_user(&tmp, iov[i].iov_base, 1)) {
+                r = -EFAULT;
+                break;
+            }
+            printk("val 0x%x at 0x%p\n", tmp, iov[i].iov_base);
+
+            if (copy_to_user(iov[i].iov_base, &j, 1)) {
+                r = -EFAULT;
+                printk("copy to user failed\n");
+                break;
+            }
+            j++;
+        }
+        /* TODO
+         * 1. keep the user iov base address for each vq.
+         * 2. keep iov array to each vq
+         * 3. pass iov base addr to log_write()
+         * 4. check if log_base is null, and if so, use iov addrs
+         * 5. done
+         */
+
+        break;
 	case VHOST_SET_LOG_FD:
 		r = get_user(fd, (int __user *)argp);
 		if (r < 0)
