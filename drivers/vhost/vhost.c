@@ -1670,7 +1670,7 @@ long vhost_dev_ioctl(struct vhost_dev *d, unsigned int ioctl, void __user *argp)
         /* TODO
          * 1. keep the user iov base address (done)
          * 2. keep iov array to each vq (done)
-         * 3. pass iov base addr to log_write()
+         * 3. pass iov base addr to log_write(done)
          * 4. check if log_base is null, and if so, use iov addrs
          * 5. done
          */
@@ -1727,7 +1727,7 @@ static int set_bit_to_user(int nr, void __user *addr)
 	return 0;
 }
 
-static int log_write(void __user *log_base,
+static int log_write(void __user *log_base, struct iovec *log_iov,
 		     u64 write_address, u64 write_length)
 {
 	u64 write_page = write_address / VHOST_PAGE_SIZE;
@@ -1762,7 +1762,7 @@ int vhost_log_write(struct vhost_virtqueue *vq, struct vhost_log *log,
 	smp_wmb();
 	for (i = 0; i < log_num; ++i) {
 		u64 l = min(log[i].len, len);
-		r = log_write(vq->log_base, log[i].addr, l);
+		r = log_write(vq->log_base, vq->log_iov, log[i].addr, l);
 		if (r < 0)
 			return r;
 		len -= l;
@@ -1789,7 +1789,7 @@ static int vhost_update_used_flags(struct vhost_virtqueue *vq)
 		smp_wmb();
 		/* Log used flag write. */
 		used = &vq->used->flags;
-		log_write(vq->log_base, vq->log_addr +
+		log_write(vq->log_base, vq->log_iov, vq->log_addr +
 			  (used - (void __user *)vq->used),
 			  sizeof vq->used->flags);
 		if (vq->log_ctx)
@@ -1809,7 +1809,7 @@ static int vhost_update_avail_event(struct vhost_virtqueue *vq, u16 avail_event)
 		smp_wmb();
 		/* Log avail event write */
 		used = vhost_avail_event(vq);
-		log_write(vq->log_base, vq->log_addr +
+		log_write(vq->log_base, vq->log_iov, vq->log_addr +
 			  (used - (void __user *)vq->used),
 			  sizeof *vhost_avail_event(vq));
 		if (vq->log_ctx)
@@ -2211,7 +2211,7 @@ static int __vhost_add_used_n(struct vhost_virtqueue *vq,
 		/* Make sure data is seen before log. */
 		smp_wmb();
 		/* Log used ring entry write. */
-		log_write(vq->log_base,
+		log_write(vq->log_base, vq->log_iov,
 			  vq->log_addr +
 			   ((void __user *)used - (void __user *)vq->used),
 			  count * sizeof *used);
@@ -2254,7 +2254,7 @@ int vhost_add_used_n(struct vhost_virtqueue *vq, struct vring_used_elem *heads,
 	}
 	if (unlikely(vq->log_used)) {
 		/* Log used index update. */
-		log_write(vq->log_base,
+		log_write(vq->log_base, vq->log_iov,
 			  vq->log_addr + offsetof(struct vring_used, idx),
 			  sizeof vq->used->idx);
 		if (vq->log_ctx)
