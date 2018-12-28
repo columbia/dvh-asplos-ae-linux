@@ -1257,7 +1257,6 @@ static int vfio_cap_len(struct vfio_pci_device *vdev, u8 cap, u8 pos)
 		} else
 			return PCI_CAP_PCIX_SIZEOF_V0;
 	case PCI_CAP_ID_VNDR:
-	case PCI_CAP_ID_MI:
 		/* length follows next field */
 		ret = pci_read_config_byte(pdev, pos + PCI_CAP_FLAGS, &byte);
 		if (ret)
