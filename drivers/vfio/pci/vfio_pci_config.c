@@ -1026,7 +1026,6 @@ int __init vfio_pci_init_perm_bits(void)
 	ret |= init_pci_cap_vpd_perm(&cap_perms[PCI_CAP_ID_VPD]);
 	ret |= init_pci_cap_pcix_perm(&cap_perms[PCI_CAP_ID_PCIX]);
 	cap_perms[PCI_CAP_ID_VNDR].writefn = vfio_raw_config_write;
-	cap_perms[PCI_CAP_ID_MI].writefn = vfio_raw_config_write;
 	ret |= init_pci_cap_exp_perm(&cap_perms[PCI_CAP_ID_EXP]);
 	ret |= init_pci_cap_af_perm(&cap_perms[PCI_CAP_ID_AF]);
 
