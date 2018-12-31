@@ -1633,7 +1633,7 @@ long vhost_dev_ioctl(struct vhost_dev *d, unsigned int ioctl, void __user *argp)
 
         printk("iov size: %lx\n", (unsigned long)p);
 
-        if (d->iov_base_user) {
+        if (!d->iov_base_user) {
             printk("haven't received iov base yet\n");
             break;
         }
@@ -1737,9 +1737,20 @@ static int log_write(void __user *log_base, struct iovec *log_iov,
 		return 0;
 	write_length += write_address % VHOST_PAGE_SIZE;
 	for (;;) {
-		u64 base = (u64)(unsigned long)log_base;
-		u64 log = base + write_page / 8;
 		int bit = write_page % 8;
+		u64 base, log, iov_idx, write_page_in_iov;
+
+        if (!log_iov) {
+            base = (u64)(unsigned long)log_base;
+            log = base + write_page / 8;
+        } else {
+            iov_idx = write_page / (8 * VHOST_PAGE_SIZE);
+            write_page_in_iov = write_page % (8 * VHOST_PAGE_SIZE);
+            base = (u64)(unsigned long)log_iov[iov_idx].iov_base;
+            log = base + write_page_in_iov / 8;
+            printk("iov based logging: iov idx: %lx for page %lx\n", iov_idx, write_page);
+        }
+
 		if ((u64)(unsigned long)log != log)
 			return -EFAULT;
 		r = set_bit_to_user(bit, (void __user *)(unsigned long)log);
