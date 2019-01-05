@@ -1626,46 +1626,29 @@ long vhost_dev_ioctl(struct vhost_dev *d, unsigned int ioctl, void __user *argp)
         d->iov_base_user = argp;
         break;
 	case VHOST_SET_LOG_IOV_SIZE:
-		if (copy_from_user(&p, argp, sizeof p)) {
-			r = -EFAULT;
-			break;
-		}
+	if (copy_from_user(&p, argp, sizeof p)) {
+		r = -EFAULT;
+		break;
+	}
+	printk("iov size: %lx\n", (unsigned long)p);
 
-        printk("iov size: %lx\n", (unsigned long)p);
+	if (!d->iov_base_user) {
+		printk("haven't received iov base yet\n");
+		break;
+	}
 
-        if (!d->iov_base_user) {
-            printk("haven't received iov base yet\n");
-            break;
+	if (copy_from_user(log_iov, d->iov_base_user, p)) {
+		r = -EFAULT;
+		break;
         }
 
-		if (copy_from_user(log_iov, d->iov_base_user, p)) {
-			r = -EFAULT;
-			break;
-        }
-
-        j = 0x90;
-        for (i = 0 ; i < p; i++) {
-            if (copy_from_user(&tmp, log_iov[i].iov_base, 1)) {
-                r = -EFAULT;
-                break;
-            }
-            printk("val 0x%x at 0x%p\n", tmp, log_iov[i].iov_base);
-
-            if (copy_to_user(log_iov[i].iov_base, &j, 1)) {
-                r = -EFAULT;
-                printk("copy to user failed\n");
-                break;
-            }
-            j++;
-        }
-
-		for (i = 0; i < d->nvqs; ++i) {
-			struct vhost_virtqueue *vq;
-			vq = d->vqs[i];
-			mutex_lock(&vq->mutex);
-            memcpy(vq->log_iov, log_iov, 0x80);
-			mutex_unlock(&vq->mutex);
-		}
+	for (i = 0; i < d->nvqs; ++i) {
+		struct vhost_virtqueue *vq;
+		vq = d->vqs[i];
+		mutex_lock(&vq->mutex);
+		memcpy(vq->log_iov, log_iov, 0x80);
+		mutex_unlock(&vq->mutex);
+	}
 
         /* TODO
          * 1. keep the user iov base address (done)
