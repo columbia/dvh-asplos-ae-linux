@@ -1637,16 +1637,14 @@ long vhost_dev_ioctl(struct vhost_dev *d, unsigned int ioctl, void __user *argp)
 		break;
 	}
 
-	if (copy_from_user(log_iov, d->iov_base_user, p)) {
-		r = -EFAULT;
-		break;
-        }
-
 	for (i = 0; i < d->nvqs; ++i) {
 		struct vhost_virtqueue *vq;
 		vq = d->vqs[i];
 		mutex_lock(&vq->mutex);
-		memcpy(vq->log_iov, log_iov, 0x80);
+		if (copy_from_user(vq->log_iov, d->iov_base_user, p)) {
+			r = -EFAULT;
+			break;
+		}
 		mutex_unlock(&vq->mutex);
 	}
 
