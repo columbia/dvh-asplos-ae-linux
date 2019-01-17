@@ -1729,7 +1729,6 @@ static int log_write(void __user *log_base, struct iovec *log_iov,
             write_page_in_iov = write_page % (8 * VHOST_PAGE_SIZE);
             base = (u64)(unsigned long)log_iov[iov_idx].iov_base;
             log = base + write_page_in_iov / 8;
-            printk("iov based logging: iov idx: %lx for page %lx\n", iov_idx, write_page);
         }
 
 		if ((u64)(unsigned long)log != log)
