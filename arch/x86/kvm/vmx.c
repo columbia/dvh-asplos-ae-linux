@@ -35,6 +35,7 @@
 #include <linux/hrtimer.h>
 #include <linux/frame.h>
 #include <linux/nospec.h>
+#include <linux/debugfs.h>
 #include "kvm_cache_regs.h"
 #include "x86.h"
 
@@ -64,6 +65,8 @@
 
 MODULE_AUTHOR("Qumranet");
 MODULE_LICENSE("GPL");
+
+bool ipi_opt_enable = 0;
 
 static const struct x86_cpu_id vmx_cpu_id[] = {
 	X86_FEATURE_MATCH(X86_FEATURE_VMX),
@@ -13150,6 +13153,66 @@ static struct kvm_x86_ops vmx_x86_ops __ro_after_init = {
 	.enable_smi_window = enable_smi_window,
 };
 
+static ssize_t ipi_fs_write(struct file *file, const char __user *buffer,
+		size_t count, loff_t *pos)
+{
+	char command[64];
+	int len;
+
+ 	len = min(count, sizeof(command) - 1);
+	if (strncpy_from_user(command, buffer, len) < 0)
+		return -EFAULT;
+	command[len] = '\0';
+
+ #if 0
+	if (strncmp(command, "enable", 6) == 0) {
+	} else if (strncmp(command, "disable", 7) == 0) {
+	} else if (strncmp(command, "reset", 5) == 0) {
+	}
+#endif
+	if (strncmp(command, "y", 1) == 0)
+		ipi_opt_enable = 1;
+	else if (strncmp(command, "1", 1) == 0)
+		ipi_opt_enable = 1;
+	else if (strncmp(command, "n", 1) == 0)
+		ipi_opt_enable = 0;
+	else if (strncmp(command, "0", 1) == 0)
+		ipi_opt_enable = 0;
+
+	printk("ipi_opt_enable: %d\n", ipi_opt_enable);
+ 	/* ignore the rest of the buffer, only one command at a time */
+	*pos += count;
+	return count;
+}
+
+static int ipi_open(struct seq_file *m, void *v)
+{
+	return 0;
+}
+
+static int ipi_fs_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, ipi_open, NULL);
+}
+
+ static const struct file_operations ipi_fs_fops = {
+	.owner = THIS_MODULE,
+	.open = ipi_fs_open,
+	.read = seq_read,
+	.write = ipi_fs_write,
+};
+
+static void ipi_opt(void)
+{
+	struct dentry *dentry;
+	dentry = debugfs_create_file("ipi_opt", 0666, kvm_debugfs_dir,
+				     NULL, &ipi_fs_fops);
+	if (!dentry)
+		kvm_err("error creating ipi debugfs dentry");
+	else
+		kvm_info("ipi debugfs up and running");
+}
+
 static int __init vmx_init(void)
 {
 	int r;
@@ -13188,6 +13251,7 @@ static int __init vmx_init(void)
 	if (r)
 		return r;
 
+	ipi_opt();
 #ifdef CONFIG_KEXEC_CORE
 	rcu_assign_pointer(crash_vmclear_loaded_vmcss,
 			   crash_vmclear_local_loaded_vmcss);
