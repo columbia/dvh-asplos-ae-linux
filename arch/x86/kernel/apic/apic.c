@@ -1072,6 +1072,7 @@ __visible void __irq_entry smp_apic_vtimer_interrupt(struct pt_regs *regs)
 	 */
 	entering_ack_irq();
 	kvm_lapic_vtimer_interrupt();
+	inc_irq_stat(apic_vtimer_irqs);
 	exiting_irq();
 
 	set_irq_regs(old_regs);
