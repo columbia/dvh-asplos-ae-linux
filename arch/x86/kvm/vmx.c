@@ -68,6 +68,7 @@ MODULE_AUTHOR("Qumranet");
 MODULE_LICENSE("GPL");
 
 bool ipi_opt_enable = 0;
+int timer_opt_enable = 0;
 
 static const struct x86_cpu_id vmx_cpu_id[] = {
 	X86_FEATURE_MATCH(X86_FEATURE_VMX),
@@ -13342,7 +13343,42 @@ static ssize_t ipi_fs_write(struct file *file, const char __user *buffer,
 	return count;
 }
 
+static ssize_t timer_fs_write(struct file *file, const char __user *buffer,
+		size_t count, loff_t *pos)
+{
+	char command[64];
+	int len;
+
+ 	len = min(count, sizeof(command) - 1);
+	if (strncpy_from_user(command, buffer, len) < 0)
+		return -EFAULT;
+	command[len] = '\0';
+
+ #if 0
+	if (strncmp(command, "enable", 6) == 0) {
+	} else if (strncmp(command, "disable", 7) == 0) {
+	} else if (strncmp(command, "reset", 5) == 0) {
+	}
+#endif
+	if (strncmp(command, "1", 1) == 0)
+		timer_opt_enable = 1;
+	else if (strncmp(command, "0", 1) == 0)
+		timer_opt_enable = 0;
+	else if (strncmp(command, "2", 1) == 0)
+		timer_opt_enable = 2;
+
+	printk("timer_opt_enable: %d\n", timer_opt_enable);
+ 	/* ignore the rest of the buffer, only one command at a time */
+	*pos += count;
+	return count;
+}
+
 static int ipi_open(struct seq_file *m, void *v)
+{
+	return 0;
+}
+
+static int timer_open(struct seq_file *m, void *v)
 {
 	return 0;
 }
@@ -13368,6 +13404,29 @@ static void ipi_opt(void)
 		kvm_err("error creating ipi debugfs dentry");
 	else
 		kvm_info("ipi debugfs up and running");
+}
+
+static int timer_fs_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, timer_open, NULL);
+}
+
+ static const struct file_operations stats_fs_fops = {
+	.owner = THIS_MODULE,
+	.open = timer_fs_open,
+	.read = seq_read,
+	.write = timer_fs_write,
+};
+
+static void timer_opt(void)
+{
+	struct dentry *dentry;
+	dentry = debugfs_create_file("timer_opt", 0666, kvm_debugfs_dir,
+				     NULL, &stats_fs_fops);
+	if (!dentry)
+		kvm_err("error creating timer debugfs dentry");
+	else
+		kvm_info("timer debugfs up and running");
 }
 
 static int __init vmx_init(void)
@@ -13409,6 +13468,7 @@ static int __init vmx_init(void)
 		return r;
 
 	ipi_opt();
+	timer_opt();
 #ifdef CONFIG_KEXEC_CORE
 	rcu_assign_pointer(crash_vmclear_loaded_vmcss,
 			   crash_vmclear_local_loaded_vmcss);
