@@ -11184,6 +11184,13 @@ static int nested_vmx_load_cr3(struct kvm_vcpu *vcpu, unsigned long cr3, bool ne
 	return 0;
 }
 
+u64 vmx_get_l2_tsc_offset(struct kvm_vcpu *vcpu)
+{
+	struct vmcs12 *vmcs12 = get_vmcs12(vcpu);
+
+	return vmcs12->tsc_offset;
+}
+
 static void prepare_vmcs02_full(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
@@ -13281,6 +13288,8 @@ static struct kvm_x86_ops vmx_x86_ops __ro_after_init = {
 	.pre_enter_smm = vmx_pre_enter_smm,
 	.pre_leave_smm = vmx_pre_leave_smm,
 	.enable_smi_window = enable_smi_window,
+
+	.get_l2_tsc_offset = vmx_get_l2_tsc_offset,
 };
 
 static ssize_t timer_fs_write(struct file *file, const char __user *buffer,

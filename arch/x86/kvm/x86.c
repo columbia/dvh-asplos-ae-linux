@@ -1617,6 +1617,16 @@ u64 kvm_read_l1_tsc(struct kvm_vcpu *vcpu, u64 host_tsc)
 }
 EXPORT_SYMBOL_GPL(kvm_read_l1_tsc);
 
+u64 kvm_read_l2_tsc(struct kvm_vcpu *vcpu, u64 host_tsc)
+{
+	u64 l1_tsc, l2_tsc_offset;
+
+	l1_tsc = kvm_read_l1_tsc(vcpu, rdtsc());
+	l2_tsc_offset = kvm_x86_ops->get_l2_tsc_offset(vcpu);
+	return l1_tsc + l2_tsc_offset;
+}
+EXPORT_SYMBOL_GPL(kvm_read_l2_tsc);
+
 static void kvm_vcpu_write_tsc_offset(struct kvm_vcpu *vcpu, u64 offset)
 {
 	kvm_x86_ops->write_tsc_offset(vcpu, offset);
