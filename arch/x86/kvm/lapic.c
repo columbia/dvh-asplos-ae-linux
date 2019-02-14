@@ -1443,15 +1443,17 @@ void wait_lapic_expire(struct kvm_vcpu *vcpu)
 			nsec_to_cycles(vcpu, lapic_timer_advance_ns)));
 }
 
-static void start_sw_tscdeadline(struct kvm_lapic *apic)
+static void __start_sw_tscdeadline(struct kvm_lapic *apic, struct kvm_timer *ktimer)
 {
-	u64 guest_tsc, tscdeadline = apic->lapic_timer.tscdeadline;
+	u64 guest_tsc, tscdeadline = ktimer->tscdeadline;
 	u64 ns = 0;
 	ktime_t expire;
 	struct kvm_vcpu *vcpu = apic->vcpu;
+	/* TODO: should I do something about this_tsc_khz? */
 	unsigned long this_tsc_khz = vcpu->arch.virtual_tsc_khz;
 	unsigned long flags;
 	ktime_t now;
+	bool vtimer = (&apic->lapic_vtimer == ktimer) ? true : false;
 
 	if (unlikely(!tscdeadline || !this_tsc_khz))
 		return;
@@ -1459,18 +1461,28 @@ static void start_sw_tscdeadline(struct kvm_lapic *apic)
 	local_irq_save(flags);
 
 	now = ktime_get();
-	guest_tsc = kvm_read_l1_tsc(vcpu, rdtsc());
+	if (vtimer)
+		guest_tsc = kvm_read_l2_tsc(vcpu, rdtsc());
+	else
+		guest_tsc = kvm_read_l1_tsc(vcpu, rdtsc());
+
 	if (likely(tscdeadline > guest_tsc)) {
 		ns = (tscdeadline - guest_tsc) * 1000000ULL;
 		do_div(ns, this_tsc_khz);
 		expire = ktime_add_ns(now, ns);
 		expire = ktime_sub_ns(expire, lapic_timer_advance_ns);
-		hrtimer_start(&apic->lapic_timer.timer,
+		hrtimer_start(&ktimer->timer,
 				expire, HRTIMER_MODE_ABS_PINNED);
-	} else
-		apic_timer_expired(apic);
+	} else {
+		if (!vtimer)
+			apic_timer_expired(apic);
+	}
 
 	local_irq_restore(flags);
+}
+
+static void start_sw_tscdeadline(struct kvm_lapic *apic) {
+	__start_sw_tscdeadline(apic, &apic->lapic_timer);
 }
 
 static void update_target_expiration(struct kvm_lapic *apic, uint32_t old_divisor)
