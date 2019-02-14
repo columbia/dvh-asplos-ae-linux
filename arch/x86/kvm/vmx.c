@@ -9041,6 +9041,35 @@ static bool handle_nvm_x2apic_icr(struct kvm_vcpu *src_vcpu)
 	return true;
 }
 
+#define APIC_TSC_DEADLINE	0x6e0
+static inline u32 kvm_lapic_get_l2_reg(void *vapic_page, int reg_off)
+{
+	return *((u32 *) (vapic_page + reg_off));
+}
+
+static bool handle_nvm_tsc_deadline(struct kvm_vcpu *vcpu)
+{
+	u32 val_reg, val_vapic;
+	void *vapic_page;
+	struct vcpu_vmx *vmx = to_vmx(vcpu);
+
+	/* Schedule a background timer */
+	val_reg = vcpu->arch.regs[VCPU_REGS_RAX];
+	vapic_page = kmap(vmx->nested.virtual_apic_page);
+	val_vapic = kvm_lapic_get_l2_reg(vapic_page, APIC_TSC_DEADLINE);
+	kunmap(vmx->nested.virtual_apic_page);
+
+	/*
+	   if (val_reg == val_vapic) {
+	   trace_printk("vals are the same: 0x%x\n", val_reg);
+	   } else {
+	   trace_printk("vals are NOT the same. reg: 0x%x, vapic: 0x%x\n", val_reg, val_vapic);
+	   }
+	   */
+
+	return false;
+}
+
 /*
  * Return true if we handled L2 vmexit.
  * Return false if L1 needs to handle it.
@@ -9049,9 +9078,14 @@ static bool handle_nvm_msr(struct kvm_vcpu *vcpu, u32 exit_reason)
 {
 	u32 msr_index = vcpu->arch.regs[VCPU_REGS_RCX];
 
+	if (exit_reason != EXIT_REASON_MSR_WRITE)
+		return false;
+
 	switch (msr_index) {
 	case X2APIC_ICR:
 		return ipi_opt_enable && handle_nvm_x2apic_icr(vcpu);
+	case APIC_TSC_DEADLINE:
+		return timer_opt_enable && handle_nvm_tsc_deadline(vcpu);
 	default:
 		break;
 	}
