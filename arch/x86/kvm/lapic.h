@@ -39,6 +39,7 @@ struct kvm_lapic {
 	unsigned long base_address;
 	struct kvm_io_device dev;
 	struct kvm_timer lapic_timer;
+	struct kvm_timer lapic_vtimer;
 	u32 divide_count;
 	struct kvm_vcpu *vcpu;
 	bool sw_enabled;

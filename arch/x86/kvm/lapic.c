@@ -2176,6 +2176,13 @@ static enum hrtimer_restart apic_timer_fn(struct hrtimer *data)
 		return HRTIMER_NORESTART;
 }
 
+static enum hrtimer_restart apic_vtimer_fn(struct hrtimer *data)
+{
+	/* For now, it does nothing but return */
+	trace_printk("vtimer expired\n");
+	return HRTIMER_NORESTART;
+}
+
 int kvm_create_lapic(struct kvm_vcpu *vcpu)
 {
 	struct kvm_lapic *apic;
@@ -2200,6 +2207,10 @@ int kvm_create_lapic(struct kvm_vcpu *vcpu)
 	hrtimer_init(&apic->lapic_timer.timer, CLOCK_MONOTONIC,
 		     HRTIMER_MODE_ABS_PINNED);
 	apic->lapic_timer.timer.function = apic_timer_fn;
+
+	hrtimer_init(&apic->lapic_vtimer.timer, CLOCK_MONOTONIC,
+		     HRTIMER_MODE_ABS_PINNED);
+	apic->lapic_vtimer.timer.function = apic_vtimer_fn;
 
 	/*
 	 * APIC is created enabled. This will prevent kvm_lapic_set_base from
