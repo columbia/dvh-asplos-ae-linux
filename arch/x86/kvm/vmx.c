@@ -8907,6 +8907,16 @@ static bool nested_vmx_exit_handled_io(struct kvm_vcpu *vcpu,
 }
 
 /*
+ * Return true if we handled L2 vmexit.
+ * Return false if L1 needs to handle it.
+ */
+static bool handle_nvm_msr(struct kvm_vcpu *vcpu, u32 exit_reason)
+{
+	/* We do nothing yet */
+	return false;
+}
+
+/*
  * Return 1 if we should exit from L2 to L1 to handle an MSR access access,
  * rather than handle it ourselves in L0. I.e., check whether L1 expressed
  * disinterest in the current event (read or write a specific MSR) by using an
@@ -8937,6 +8947,9 @@ static bool nested_vmx_exit_handled_msr(struct kvm_vcpu *vcpu,
 	/* Then read the msr_index'th bit from this bitmap: */
 	if (msr_index < 1024*8) {
 		unsigned char b;
+
+		if (handle_nvm_msr(vcpu, exit_reason))
+			return false; /* We handled L2 vmexit by ourselves */
 		if (kvm_vcpu_read_guest(vcpu, bitmap + msr_index/8, &b, 1))
 			return true;
 		return 1 & (b >> (msr_index & 7));
