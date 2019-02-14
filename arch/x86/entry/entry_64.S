@@ -861,6 +861,7 @@ apicinterrupt3 UV_BAU_MESSAGE			uv_bau_message_intr1		uv_bau_message_interrupt
 #endif
 
 apicinterrupt LOCAL_TIMER_VECTOR		apic_timer_interrupt		smp_apic_timer_interrupt
+apicinterrupt LOCAL_VTIMER_VECTOR		apic_vtimer_interrupt 		smp_apic_vtimer_interrupt
 apicinterrupt X86_PLATFORM_IPI_VECTOR		x86_platform_ipi		smp_x86_platform_ipi
 
 #ifdef CONFIG_HAVE_KVM

@@ -1057,6 +1057,24 @@ __visible void __irq_entry smp_apic_timer_interrupt(struct pt_regs *regs)
 	set_irq_regs(old_regs);
 }
 
+__visible void __irq_entry smp_apic_vtimer_interrupt(struct pt_regs *regs)
+{
+	struct pt_regs *old_regs = set_irq_regs(regs);
+
+	/*
+	 * NOTE! We'd better ACK the irq immediately,
+	 * because timer handling can be slow.
+	 *
+	 * update_process_times() expects us to have done irq_enter().
+	 * Besides, if we don't timer interrupts ignore the global
+	 * interrupt lock, which is the WrongThing (tm) to do.
+	 */
+	entering_ack_irq();
+	trace_printk("vtimer in\n");
+	exiting_irq();
+
+	set_irq_regs(old_regs);
+}
 int setup_profiling_timer(unsigned int multiplier)
 {
 	return -EINVAL;

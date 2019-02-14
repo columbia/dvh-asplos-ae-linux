@@ -30,6 +30,7 @@
 
 /* Interrupt handlers registered during init_IRQ */
 extern asmlinkage void apic_timer_interrupt(void);
+extern asmlinkage void apic_vtimer_interrupt(void);
 extern asmlinkage void x86_platform_ipi(void);
 extern asmlinkage void kvm_posted_intr_ipi(void);
 extern asmlinkage void kvm_posted_intr_wakeup_ipi(void);
