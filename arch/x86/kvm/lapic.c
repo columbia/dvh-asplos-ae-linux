@@ -1485,6 +1485,13 @@ static void start_sw_tscdeadline(struct kvm_lapic *apic) {
 	__start_sw_tscdeadline(apic, &apic->lapic_timer);
 }
 
+void kvm_lapic_restart_sw_timer(struct  kvm_vcpu *vcpu) {
+	struct kvm_lapic *apic = vcpu->arch.apic;
+
+	hrtimer_cancel(&apic->lapic_vtimer.timer);
+	__start_sw_tscdeadline(apic, &apic->lapic_vtimer);
+}
+
 static void update_target_expiration(struct kvm_lapic *apic, uint32_t old_divisor)
 {
 	ktime_t now, remaining;
