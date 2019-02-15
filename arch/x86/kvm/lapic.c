@@ -302,9 +302,14 @@ static inline int apic_lvtt_period(struct kvm_lapic *apic)
 	return apic->lapic_timer.timer_mode == APIC_LVT_TIMER_PERIODIC;
 }
 
+static inline int __apic_lvtt_tscdeadline(struct kvm_lapic *apic, struct kvm_timer *ktimer)
+{
+	return ktimer->timer_mode == APIC_LVT_TIMER_TSCDEADLINE;
+}
+
 static inline int apic_lvtt_tscdeadline(struct kvm_lapic *apic)
 {
-	return apic->lapic_timer.timer_mode == APIC_LVT_TIMER_TSCDEADLINE;
+	return __apic_lvtt_tscdeadline(apic, &apic->lapic_timer);
 }
 
 static inline int apic_lvt_nmi_mode(u32 lvt_val)
@@ -1372,16 +1377,15 @@ static void apic_update_lvtt(struct kvm_lapic *apic)
 	}
 }
 
-static void apic_timer_expired(struct kvm_lapic *apic)
+static void __apic_timer_expired(struct kvm_lapic *apic, struct kvm_timer *ktimer)
 {
 	struct kvm_vcpu *vcpu = apic->vcpu;
 	struct swait_queue_head *q = &vcpu->wq;
-	struct kvm_timer *ktimer = &apic->lapic_timer;
 
-	if (atomic_read(&apic->lapic_timer.pending))
+	if (atomic_read(&ktimer->pending))
 		return;
 
-	atomic_inc(&apic->lapic_timer.pending);
+	atomic_inc(&ktimer->pending);
 	kvm_set_pending_timer(vcpu);
 
 	/*
@@ -1391,8 +1395,13 @@ static void apic_timer_expired(struct kvm_lapic *apic)
 	if (swait_active(q))
 		swake_up(q);
 
-	if (apic_lvtt_tscdeadline(apic))
+	if (__apic_lvtt_tscdeadline(apic, ktimer))
 		ktimer->expired_tscdeadline = ktimer->tscdeadline;
+}
+
+static void apic_timer_expired(struct kvm_lapic *apic)
+{
+	__apic_timer_expired(apic, &apic->lapic_timer);
 }
 
 /*
