@@ -9049,12 +9049,14 @@ static inline u32 kvm_lapic_get_l2_reg(void *vapic_page, int reg_off)
 
 static bool handle_nvm_tsc_deadline(struct kvm_vcpu *vcpu)
 {
-	u32 val_reg, val_vapic;
+	u32 val_vapic;
+	u64 val_reg;
 	void *vapic_page;
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 
 	/* Schedule a background timer */
-	val_reg = vcpu->arch.regs[VCPU_REGS_RAX];
+	val_reg = (vcpu->arch.regs[VCPU_REGS_RAX] & -1u)
+		| ((u64)(vcpu->arch.regs[VCPU_REGS_RDX] & -1u) << 32);
 	vapic_page = kmap(vmx->nested.virtual_apic_page);
 	val_vapic = kvm_lapic_get_l2_reg(vapic_page, APIC_TSC_DEADLINE);
 	kunmap(vmx->nested.virtual_apic_page);
