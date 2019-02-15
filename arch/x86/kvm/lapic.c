@@ -1377,6 +1377,13 @@ static void apic_update_lvtt(struct kvm_lapic *apic)
 	}
 }
 
+static bool inline is_vtimer(struct kvm_lapic *apic, struct kvm_timer *ktimer)
+{
+	if (ktimer == &apic->lapic_vtimer)
+		return true;
+	return false;
+}
+
 static void __apic_timer_expired(struct kvm_lapic *apic, struct kvm_timer *ktimer)
 {
 	struct kvm_vcpu *vcpu = apic->vcpu;
