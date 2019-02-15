@@ -2142,11 +2142,14 @@ static bool lapic_is_periodic(struct kvm_lapic *apic)
 int apic_has_pending_timer(struct kvm_vcpu *vcpu)
 {
 	struct kvm_lapic *apic = vcpu->arch.apic;
+	bool pending = false;
 
-	if (apic_enabled(apic) && apic_lvt_enabled(apic, APIC_LVTT))
-		return atomic_read(&apic->lapic_timer.pending);
+	if (apic_enabled(apic) && apic_lvt_enabled(apic, APIC_LVTT)) {
+		pending |= atomic_read(&apic->lapic_timer.pending);
+		pending |= atomic_read(&apic->lapic_vtimer.pending);
+	}
 
-	return 0;
+	return pending;
 }
 
 int kvm_apic_local_deliver(struct kvm_lapic *apic, int lvt_type)
