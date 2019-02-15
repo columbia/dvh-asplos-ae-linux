@@ -1404,6 +1404,11 @@ static void apic_timer_expired(struct kvm_lapic *apic)
 	__apic_timer_expired(apic, &apic->lapic_timer);
 }
 
+static void apic_vtimer_expired(struct kvm_lapic *apic)
+{
+	__apic_timer_expired(apic, &apic->lapic_vtimer);
+}
+
 /*
  * On APICv, this test will cause a busy wait
  * during a higher-priority task.
@@ -1485,6 +1490,8 @@ static void __start_sw_tscdeadline(struct kvm_lapic *apic, struct kvm_timer *kti
 	} else {
 		if (!vtimer)
 			apic_timer_expired(apic);
+		else
+			apic_vtimer_expired(apic);
 	}
 
 	local_irq_restore(flags);
@@ -2108,6 +2115,7 @@ void kvm_lapic_reset(struct kvm_vcpu *vcpu, bool init_event)
 	apic->highest_isr_cache = -1;
 	update_divide_count(apic);
 	atomic_set(&apic->lapic_timer.pending, 0);
+	atomic_set(&apic->lapic_vtimer.pending, 0);
 	if (kvm_vcpu_is_bsp(vcpu))
 		kvm_lapic_set_base(vcpu,
 				vcpu->arch.apic_base | MSR_IA32_APICBASE_BSP);
@@ -2154,13 +2162,26 @@ int apic_has_pending_timer(struct kvm_vcpu *vcpu)
 
 int kvm_apic_local_deliver(struct kvm_lapic *apic, int lvt_type)
 {
-	u32 reg = kvm_lapic_get_reg(apic, lvt_type);
+	u32 reg = 0;
 	int vector, mode, trig_mode;
+
+	/* HACK: we fake that we have virtual LVT virtual timer. Eventually we
+	* should define it and keep what the guest hypervisor programs
+	*/
+	if (lvt_type != APIC_LVTVT)
+		reg = kvm_lapic_get_reg(apic, lvt_type);
 
 	if (kvm_apic_hw_enabled(apic) && !(reg & APIC_LVT_MASKED)) {
 		vector = reg & APIC_VECTOR_MASK;
 		mode = reg & APIC_MODE_MASK;
 		trig_mode = reg & APIC_LVT_LEVEL_TRIGGER;
+
+		if (lvt_type == APIC_LVTVT) {
+			vector = 0xed;
+			mode = 0; /* reserved */
+			trig_mode = 0; /* reserved */
+		}
+
 		return __apic_accept_irq(apic, mode, vector, 1, trig_mode,
 					NULL);
 	}
@@ -2197,8 +2218,12 @@ static enum hrtimer_restart apic_timer_fn(struct hrtimer *data)
 
 static enum hrtimer_restart apic_vtimer_fn(struct hrtimer *data)
 {
+	struct kvm_timer *ktimer = container_of(data, struct kvm_timer, timer);
+	struct kvm_lapic *apic = container_of(ktimer, struct kvm_lapic, lapic_vtimer);
+
 	/* For now, it does nothing but return */
 	trace_printk("vtimer expired\n");
+	apic_vtimer_expired(apic);
 	return HRTIMER_NORESTART;
 }
 
@@ -2284,6 +2309,13 @@ void kvm_inject_apic_timer_irqs(struct kvm_vcpu *vcpu)
 			apic->lapic_timer.target_expiration = 0;
 		}
 		atomic_set(&apic->lapic_timer.pending, 0);
+	}
+
+	if (atomic_read(&apic->lapic_vtimer.pending) > 0) {
+		trace_printk("vtimer is pending. Let's inject\n");
+		kvm_apic_local_deliver(apic, APIC_LVTVT);
+		apic->lapic_vtimer.tscdeadline = 0;
+		atomic_set(&apic->lapic_vtimer.pending, 0);
 	}
 }
 
