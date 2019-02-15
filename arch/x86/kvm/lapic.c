@@ -1968,6 +1968,7 @@ void kvm_free_lapic(struct kvm_vcpu *vcpu)
 		return;
 
 	hrtimer_cancel(&apic->lapic_timer.timer);
+	hrtimer_cancel(&apic->lapic_vtimer.timer);
 
 	if (!(vcpu->arch.apic_base & MSR_IA32_APICBASE_ENABLE))
 		static_key_slow_dec_deferred(&apic_hw_disabled);
