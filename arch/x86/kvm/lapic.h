@@ -234,4 +234,5 @@ static inline enum lapic_mode kvm_apic_mode(u64 apic_base)
 	return apic_base & (MSR_IA32_APICBASE_ENABLE | X2APIC_ENABLE);
 }
 
+void kvm_lapic_timer_expired(struct kvm_vcpu *vcpu);
 #endif

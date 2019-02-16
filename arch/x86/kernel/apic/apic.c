@@ -34,6 +34,7 @@
 #include <linux/dmi.h>
 #include <linux/smp.h>
 #include <linux/mm.h>
+#include <linux/kvm_host.h>
 
 #include <asm/trace/irq_vectors.h>
 #include <asm/irq_remapping.h>
@@ -1070,7 +1071,7 @@ __visible void __irq_entry smp_apic_vtimer_interrupt(struct pt_regs *regs)
 	 * interrupt lock, which is the WrongThing (tm) to do.
 	 */
 	entering_ack_irq();
-	trace_printk("vtimer in\n");
+	kvm_lapic_vtimer_interrupt();
 	exiting_irq();
 
 	set_irq_regs(old_regs);

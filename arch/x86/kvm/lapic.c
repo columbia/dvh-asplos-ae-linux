@@ -1385,6 +1385,11 @@ static void apic_timer_expired(struct kvm_lapic *apic)
 		ktimer->expired_tscdeadline = ktimer->tscdeadline;
 }
 
+void kvm_lapic_timer_expired(struct kvm_vcpu *vcpu)
+{
+	apic_timer_expired(vcpu->arch.apic);
+}
+
 /*
  * On APICv, this test will cause a busy wait
  * during a higher-priority task.
@@ -2617,4 +2622,21 @@ void kvm_lapic_exit(void)
 {
 	static_key_deferred_flush(&apic_hw_disabled);
 	static_key_deferred_flush(&apic_sw_disabled);
+}
+
+void kvm_lapic_vtimer_interrupt(void)
+{
+	struct kvm_vcpu *vcpu = kvm_get_running_vcpu();
+
+	if (!vcpu) {
+		trace_printk("vcpu is NULL. expect sw timer expiration\n");
+		return;
+	}
+
+	/* We don't need to do anything special such as canceling the vtimer
+	 * since vtimer is off on the expiration.
+	 * So call the function below instead of calling kvm_lapic_expired_virt_timer
+	 */
+	kvm_lapic_timer_expired(vcpu);
+	trace_printk("vtimer irq for vcpu %d\n", vcpu? vcpu->vcpu_id : 77);
 }

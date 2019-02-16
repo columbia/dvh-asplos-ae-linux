@@ -1485,4 +1485,6 @@ static inline int kvm_cpu_get_apicid(int mps_cpu)
 	*(type *)((buf) + (offset) - 0x7e00) = val
 
 struct kvm_vcpu *kvm_get_running_vcpu(void);
+void kvm_lapic_vtimer_interrupt(void);
+
 #endif /* _ASM_X86_KVM_HOST_H */
