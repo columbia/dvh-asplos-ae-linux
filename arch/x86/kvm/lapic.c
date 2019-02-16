@@ -2315,9 +2315,16 @@ void kvm_inject_apic_timer_irqs(struct kvm_vcpu *vcpu)
 
 	if (atomic_read(&apic->lapic_timer.pending) > 0) {
 		kvm_apic_local_deliver(apic, APIC_LVTT);
-		if (apic_lvtt_tscdeadline(apic))
+		if (apic_lvtt_tscdeadline(apic)) {
+			trace_printk("injecting a timer irq to vcpu %d for deadline: 0x%llx\n",
+				     vcpu->vcpu_id, apic->lapic_timer.tscdeadline);
 			apic->lapic_timer.tscdeadline = 0;
+		}
 		if (apic_lvtt_oneshot(apic)) {
+			trace_printk("Huh... injecting a timer irq for one shot: 0x%llx, 0x%llx\n",
+				     apic->lapic_timer.tscdeadline,
+				     apic->lapic_timer.target_expiration
+				    );
 			apic->lapic_timer.tscdeadline = 0;
 			apic->lapic_timer.target_expiration = 0;
 		}
