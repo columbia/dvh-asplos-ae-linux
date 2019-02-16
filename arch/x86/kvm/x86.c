@@ -98,6 +98,17 @@ static u64 __read_mostly efer_reserved_bits = ~((u64)EFER_SCE);
 #define KVM_X2APIC_API_VALID_FLAGS (KVM_X2APIC_API_USE_32BIT_IDS | \
                                     KVM_X2APIC_API_DISABLE_BROADCAST_QUIRK)
 
+static DEFINE_PER_CPU(struct kvm_vcpu *, kvm_running_vcpu);
+static void kvm_set_running_vcpu(struct kvm_vcpu *vcpu)
+{
+	__this_cpu_write(kvm_running_vcpu, vcpu);
+}
+
+struct kvm_vcpu *kvm_get_running_vcpu(void)
+{
+	return __this_cpu_read(kvm_running_vcpu);
+}
+
 static void update_cr8_intercept(struct kvm_vcpu *vcpu);
 static void process_nmi(struct kvm_vcpu *vcpu);
 static void enter_smm(struct kvm_vcpu *vcpu);
@@ -3122,6 +3133,7 @@ void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 					wbinvd_ipi, NULL, 1);
 	}
 
+	kvm_set_running_vcpu(vcpu);
 	kvm_x86_ops->vcpu_load(vcpu, cpu);
 
 	/* Apply any externally detected TSC adjustments (due to suspend) */
@@ -3206,6 +3218,7 @@ void kvm_arch_vcpu_put(struct kvm_vcpu *vcpu)
 	 * guest. do_debug expects dr6 to be cleared after it runs, do the same.
 	 */
 	set_debugreg(0, 6);
+	kvm_set_running_vcpu(NULL);
 }
 
 static int kvm_vcpu_ioctl_get_lapic(struct kvm_vcpu *vcpu,

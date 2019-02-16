@@ -1484,4 +1484,5 @@ static inline int kvm_cpu_get_apicid(int mps_cpu)
 #define put_smstate(type, buf, offset, val)                      \
 	*(type *)((buf) + (offset) - 0x7e00) = val
 
+struct kvm_vcpu *kvm_get_running_vcpu(void);
 #endif /* _ASM_X86_KVM_HOST_H */
