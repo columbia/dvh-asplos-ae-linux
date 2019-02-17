@@ -1662,16 +1662,16 @@ static void restart_apic_timer(struct kvm_lapic *apic)
 	preempt_enable();
 }
 
-void kvm_lapic_expired_hv_timer(struct kvm_vcpu *vcpu)
+static void kvm_lapic_expired_hw_timer(struct kvm_vcpu *vcpu, int timer)
 {
 	struct kvm_lapic *apic = vcpu->arch.apic;
 
 	preempt_disable();
 	/* If the preempt notifier has already run, it also called apic_timer_expired */
-	if (!apic->lapic_timer.hw_timer_in_use[HV_TIMER])
+	if (!apic->lapic_timer.hw_timer_in_use[timer])
 		goto out;
 	WARN_ON(swait_active(&vcpu->wq));
-	cancel_hv_timer(apic);
+	cancel_hw_timer(apic, timer);
 	apic_timer_expired(apic);
 
 	if (apic_lvtt_period(apic) && apic->lapic_timer.period) {
@@ -1680,6 +1680,11 @@ void kvm_lapic_expired_hv_timer(struct kvm_vcpu *vcpu)
 	}
 out:
 	preempt_enable();
+}
+
+void kvm_lapic_expired_hv_timer(struct kvm_vcpu *vcpu)
+{
+	kvm_lapic_expired_hw_timer(vcpu, HV_TIMER);
 }
 EXPORT_SYMBOL_GPL(kvm_lapic_expired_hv_timer);
 
