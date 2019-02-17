@@ -1575,12 +1575,15 @@ bool kvm_lapic_hv_timer_in_use(struct kvm_vcpu *vcpu)
 }
 EXPORT_SYMBOL_GPL(kvm_lapic_hv_timer_in_use);
 
-static void cancel_hv_timer(struct kvm_lapic *apic)
+static void cancel_hw_timer(struct kvm_lapic *apic, int timer)
 {
 	WARN_ON(preemptible());
-	WARN_ON(!apic->lapic_timer.hw_timer_in_use[HV_TIMER]);
-	kvm_x86_ops->cancel_hv_timer(apic->vcpu);
-	apic->lapic_timer.hw_timer_in_use[HV_TIMER] = false;
+	WARN_ON(!apic->lapic_timer.hw_timer_in_use[timer]);
+
+	if (timer == HV_TIMER)
+		kvm_x86_ops->cancel_hv_timer(apic->vcpu);
+	apic->lapic_timer.hw_timer_in_use[timer] = false;
+	trace_kvm_hw_timer_state(apic->vcpu->vcpu_id, timer, false);
 }
 
 static bool start_hw_timer(struct kvm_lapic *apic, int timer)
@@ -1634,10 +1637,14 @@ static bool start_hv_timer(struct kvm_lapic *apic)
 static void start_sw_timer(struct kvm_lapic *apic)
 {
 	struct kvm_timer *ktimer = &apic->lapic_timer;
+	int timer;
 
 	WARN_ON(preemptible());
-	if (apic->lapic_timer.hw_timer_in_use[HV_TIMER])
-		cancel_hv_timer(apic);
+
+	for (timer = 0; timer < HW_TIMER_MAX; timer++) {
+		if (apic->lapic_timer.hw_timer_in_use[timer])
+			cancel_hw_timer(apic, timer);
+	}
 	if (!apic_lvtt_period(apic) && atomic_read(&ktimer->pending))
 		return;
 
@@ -1645,7 +1652,6 @@ static void start_sw_timer(struct kvm_lapic *apic)
 		start_sw_period(apic);
 	else if (apic_lvtt_tscdeadline(apic))
 		start_sw_tscdeadline(apic);
-	trace_kvm_hw_timer_state(apic->vcpu->vcpu_id, HV_TIMER, false);
 }
 
 static void restart_apic_timer(struct kvm_lapic *apic)
