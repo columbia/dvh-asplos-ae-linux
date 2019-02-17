@@ -25,7 +25,8 @@ enum lapic_mode {
 
 /* HW supported timers for virtual machines */
 #define	HV_TIMER	0
-#define	HW_TIMER_MAX	1
+#define	VIRT_TIMER	1
+#define	HW_TIMER_MAX	2
 
 struct kvm_timer {
 	struct hrtimer timer;
@@ -36,7 +37,8 @@ struct kvm_timer {
 	u64 tscdeadline;
 	u64 expired_tscdeadline;
 	atomic_t pending;			/* accumulated triggered timers */
-	bool hw_timer_in_use[HW_TIMER_MAX];	/* 0: hv timer */
+	bool hw_timer_in_use[HW_TIMER_MAX];	/* 0: hv timer
+						 * 1: virtual timer */
 };
 
 struct kvm_lapic {

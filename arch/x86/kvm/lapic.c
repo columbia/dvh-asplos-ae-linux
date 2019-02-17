@@ -1600,6 +1600,9 @@ static void cancel_hw_timer(struct kvm_lapic *apic, int timer)
 
 	if (timer == HV_TIMER)
 		kvm_x86_ops->cancel_hv_timer(apic->vcpu);
+	else if (timer == VIRT_TIMER)
+		kvm_x86_ops->cancel_virt_timer(apic->vcpu);
+
 	apic->lapic_timer.hw_timer_in_use[timer] = false;
 	trace_kvm_hw_timer_state(apic->vcpu->vcpu_id, timer, false);
 }
@@ -1612,6 +1615,8 @@ static bool start_hw_timer(struct kvm_lapic *apic, int timer)
 
 	if (timer == HV_TIMER) {
 		set_hw_timer = kvm_x86_ops->set_hv_timer;
+	} else if (timer == VIRT_TIMER) {
+		set_hw_timer = kvm_x86_ops->set_virt_timer;
 	} else
 		return false;
 

@@ -1367,7 +1367,8 @@ TRACE_EVENT(kvm_hw_timer_state,
 			),
 		TP_printk("vcpu_id %x %s timer %x\n",
 			__entry->vcpu_id,
-			__entry->timer == 0 ? "hv" : "unknown",
+			__entry->timer == 0 ? "hv" :
+					(__entry->timer == 1 ? "virt" : "unknown"),
 			__entry->hw_timer_in_use)
 );
 
