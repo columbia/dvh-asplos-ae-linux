@@ -12599,7 +12599,9 @@ static inline int u64_shl_div_u64(u64 a, unsigned int shift,
 	return 0;
 }
 
-static int vmx_set_hv_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc)
+/* Set up hardware timer for a VM */
+static int __vmx_set_hw_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc,
+			      bool hv_timer)
 {
 	struct vcpu_vmx *vmx;
 	u64 tscl, guest_tscl, delta_tsc, lapic_timer_advance_cycles;
@@ -12635,11 +12637,19 @@ static int vmx_set_hv_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc)
 	if (delta_tsc >> (cpu_preemption_timer_multi + 32))
 		return -ERANGE;
 
-	vmx->hv_deadline_tsc = tscl + delta_tsc;
-	vmcs_set_bits(PIN_BASED_VM_EXEC_CONTROL,
-			PIN_BASED_VMX_PREEMPTION_TIMER);
+	if (hv_timer) {
+		vmx->hv_deadline_tsc = tscl + delta_tsc;
+		vmcs_set_bits(PIN_BASED_VM_EXEC_CONTROL,
+				PIN_BASED_VMX_PREEMPTION_TIMER);
+	} else
+		return -EINVAL;
 
 	return delta_tsc == 0;
+}
+
+static int vmx_set_hv_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc)
+{
+	return __vmx_set_hw_timer(vcpu, guest_deadline_tsc, true);
 }
 
 static void vmx_cancel_hv_timer(struct kvm_vcpu *vcpu)
