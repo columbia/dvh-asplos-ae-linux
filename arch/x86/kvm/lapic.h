@@ -23,6 +23,10 @@ enum lapic_mode {
 	LAPIC_MODE_X2APIC = MSR_IA32_APICBASE_ENABLE | X2APIC_ENABLE,
 };
 
+/* HW supported timers for virtual machines */
+#define	HV_TIMER	0
+#define	HW_TIMER_MAX	1
+
 struct kvm_timer {
 	struct hrtimer timer;
 	s64 period; 				/* unit: ns */
@@ -32,7 +36,7 @@ struct kvm_timer {
 	u64 tscdeadline;
 	u64 expired_tscdeadline;
 	atomic_t pending;			/* accumulated triggered timers */
-	bool hv_timer_in_use;
+	bool hw_timer_in_use[HW_TIMER_MAX];	/* 0: hv timer */
 };
 
 struct kvm_lapic {

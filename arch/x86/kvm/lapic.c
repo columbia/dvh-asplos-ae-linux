@@ -1571,16 +1571,16 @@ bool kvm_lapic_hv_timer_in_use(struct kvm_vcpu *vcpu)
 	if (!lapic_in_kernel(vcpu))
 		return false;
 
-	return vcpu->arch.apic->lapic_timer.hv_timer_in_use;
+	return vcpu->arch.apic->lapic_timer.hw_timer_in_use[HV_TIMER];
 }
 EXPORT_SYMBOL_GPL(kvm_lapic_hv_timer_in_use);
 
 static void cancel_hv_timer(struct kvm_lapic *apic)
 {
 	WARN_ON(preemptible());
-	WARN_ON(!apic->lapic_timer.hv_timer_in_use);
+	WARN_ON(!apic->lapic_timer.hw_timer_in_use[HV_TIMER]);
 	kvm_x86_ops->cancel_hv_timer(apic->vcpu);
-	apic->lapic_timer.hv_timer_in_use = false;
+	apic->lapic_timer.hw_timer_in_use[HV_TIMER] = false;
 }
 
 static bool start_hv_timer(struct kvm_lapic *apic)
@@ -1602,7 +1602,7 @@ static bool start_hv_timer(struct kvm_lapic *apic)
 	if (r < 0)
 		return false;
 
-	ktimer->hv_timer_in_use = true;
+	ktimer->hw_timer_in_use[timer] = true;
 	hrtimer_cancel(&ktimer->timer);
 
 	/*
@@ -1620,12 +1620,17 @@ static bool start_hv_timer(struct kvm_lapic *apic)
 	return true;
 }
 
+static bool start_hv_timer(struct kvm_lapic *apic)
+{
+	return start_hw_timer(apic, HV_TIMER);
+}
+
 static void start_sw_timer(struct kvm_lapic *apic)
 {
 	struct kvm_timer *ktimer = &apic->lapic_timer;
 
 	WARN_ON(preemptible());
-	if (apic->lapic_timer.hv_timer_in_use)
+	if (apic->lapic_timer.hw_timer_in_use[HV_TIMER])
 		cancel_hv_timer(apic);
 	if (!apic_lvtt_period(apic) && atomic_read(&ktimer->pending))
 		return;
@@ -1651,7 +1656,7 @@ void kvm_lapic_expired_hv_timer(struct kvm_vcpu *vcpu)
 
 	preempt_disable();
 	/* If the preempt notifier has already run, it also called apic_timer_expired */
-	if (!apic->lapic_timer.hv_timer_in_use)
+	if (!apic->lapic_timer.hw_timer_in_use[HV_TIMER])
 		goto out;
 	WARN_ON(swait_active(&vcpu->wq));
 	cancel_hv_timer(apic);
@@ -1678,7 +1683,7 @@ void kvm_lapic_switch_to_sw_timer(struct kvm_vcpu *vcpu)
 
 	preempt_disable();
 	/* Possibly the TSC deadline timer is not enabled yet */
-	if (apic->lapic_timer.hv_timer_in_use)
+	if (apic->lapic_timer.hw_timer_in_use[HV_TIMER])
 		start_sw_timer(apic);
 	preempt_enable();
 }
@@ -1688,7 +1693,7 @@ void kvm_lapic_restart_hv_timer(struct kvm_vcpu *vcpu)
 {
 	struct kvm_lapic *apic = vcpu->arch.apic;
 
-	WARN_ON(!apic->lapic_timer.hv_timer_in_use);
+	WARN_ON(!apic->lapic_timer.hw_timer_in_use[HV_TIMER]);
 	restart_apic_timer(apic);
 }
 
