@@ -1583,13 +1583,19 @@ static void cancel_hv_timer(struct kvm_lapic *apic)
 	apic->lapic_timer.hw_timer_in_use[HV_TIMER] = false;
 }
 
-static bool start_hv_timer(struct kvm_lapic *apic)
+static bool start_hw_timer(struct kvm_lapic *apic, int timer)
 {
 	struct kvm_timer *ktimer = &apic->lapic_timer;
 	int r;
+	int (*set_hw_timer)(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc);
+
+	if (timer == HV_TIMER) {
+		set_hw_timer = kvm_x86_ops->set_hv_timer;
+	} else
+		return false;
 
 	WARN_ON(preemptible());
-	if (!kvm_x86_ops->set_hv_timer)
+	if (!set_hw_timer)
 		return false;
 
 	if (!apic_lvtt_period(apic) && atomic_read(&ktimer->pending))
@@ -1598,7 +1604,7 @@ static bool start_hv_timer(struct kvm_lapic *apic)
 	if (!ktimer->tscdeadline)
 		return false;
 
-	r = kvm_x86_ops->set_hv_timer(apic->vcpu, ktimer->tscdeadline);
+	r = set_hw_timer(apic->vcpu, ktimer->tscdeadline);
 	if (r < 0)
 		return false;
 
@@ -1616,7 +1622,7 @@ static bool start_hv_timer(struct kvm_lapic *apic)
 		return false;
 	}
 
-	trace_kvm_hv_timer_state(apic->vcpu->vcpu_id, true);
+	trace_kvm_hw_timer_state(apic->vcpu->vcpu_id, timer, true);
 	return true;
 }
 
@@ -1639,7 +1645,7 @@ static void start_sw_timer(struct kvm_lapic *apic)
 		start_sw_period(apic);
 	else if (apic_lvtt_tscdeadline(apic))
 		start_sw_tscdeadline(apic);
-	trace_kvm_hv_timer_state(apic->vcpu->vcpu_id, false);
+	trace_kvm_hw_timer_state(apic->vcpu->vcpu_id, HV_TIMER, false);
 }
 
 static void restart_apic_timer(struct kvm_lapic *apic)
