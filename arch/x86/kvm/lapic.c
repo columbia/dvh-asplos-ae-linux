@@ -1835,6 +1835,13 @@ int kvm_lapic_reg_write(struct kvm_lapic *apic, u32 reg, u32 val)
 			val &= 0xff000000;
 		kvm_lapic_set_reg(apic, APIC_ICR2, val);
 		break;
+	case APIC_V_TSC_DEADLINE:
+		/* This is used by the host hypervisor to keep the tsc_deadline
+		 * written by the L2. L1 can read it to schedule sw timer when
+		 * necessary.
+		 */
+		kvm_lapic_set_reg(apic, reg, val);
+		break;
 
 	case APIC_LVT0:
 		apic_manage_nmi_watchdog(apic, val);

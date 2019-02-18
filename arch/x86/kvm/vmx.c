@@ -9065,6 +9065,9 @@ static bool handle_nvm_tsc_deadline(struct kvm_vcpu *vcpu)
 	apic->lapic_vtimer.tscdeadline = val_reg;
 	kvm_lapic_restart_sw_timer(vcpu);
 
+	/* Make tsc_deadline set by nvm visible to L1 */
+	kvm_lapic_reg_write(vcpu->arch.apic, APIC_V_TSC_DEADLINE, val_reg);
+
 	/*
 	   if (val_reg == val_vapic) {
 	   trace_printk("vals are the same: 0x%x\n", val_reg);
