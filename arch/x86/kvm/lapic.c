@@ -1655,9 +1655,21 @@ static bool start_virt_timer(struct kvm_lapic *apic)
 	return start_hw_timer(apic, VIRT_TIMER);
 }
 
-static void start_sw_timer(struct kvm_lapic *apic)
+static void __start_sw_timer(struct kvm_lapic *apic)
 {
 	struct kvm_timer *ktimer = &apic->lapic_timer;
+
+	if (!apic_lvtt_period(apic) && atomic_read(&ktimer->pending))
+		return;
+
+	if (apic_lvtt_period(apic) || apic_lvtt_oneshot(apic))
+		start_sw_period(apic);
+	else if (apic_lvtt_tscdeadline(apic))
+		start_sw_tscdeadline(apic);
+}
+
+static void start_sw_timer(struct kvm_lapic *apic)
+{
 	int timer;
 
 	WARN_ON(preemptible());
@@ -1666,13 +1678,8 @@ static void start_sw_timer(struct kvm_lapic *apic)
 		if (apic->lapic_timer.hw_timer_in_use[timer])
 			cancel_hw_timer(apic, timer);
 	}
-	if (!apic_lvtt_period(apic) && atomic_read(&ktimer->pending))
-		return;
 
-	if (apic_lvtt_period(apic) || apic_lvtt_oneshot(apic))
-		start_sw_period(apic);
-	else if (apic_lvtt_tscdeadline(apic))
-		start_sw_tscdeadline(apic);
+	__start_sw_timer(apic);
 }
 
 static void restart_apic_timer(struct kvm_lapic *apic)
