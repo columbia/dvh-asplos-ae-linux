@@ -1508,9 +1508,7 @@ static void start_sw_tscdeadline(struct kvm_lapic *apic) {
 	__start_sw_tscdeadline(apic, &apic->lapic_timer);
 }
 
-void kvm_lapic_restart_sw_timer(struct  kvm_vcpu *vcpu) {
-	struct kvm_lapic *apic = vcpu->arch.apic;
-
+static void restart_sw_timer(struct  kvm_lapic *apic) {
 	hrtimer_cancel(&apic->lapic_vtimer.timer);
 	__start_sw_tscdeadline(apic, &apic->lapic_vtimer);
 }
@@ -1836,11 +1834,13 @@ int kvm_lapic_reg_write(struct kvm_lapic *apic, u32 reg, u32 val)
 		kvm_lapic_set_reg(apic, APIC_ICR2, val);
 		break;
 	case APIC_V_TSC_DEADLINE:
-		/* This is used by the host hypervisor to keep the tsc_deadline
-		 * written by the L2. L1 can read it to schedule sw timer when
-		 * necessary.
+		/* L0 might redirect L2's TSC_DEADLINE access or
+		 * L1 might try to access the virtual tsc_deadline register.
 		 */
 		kvm_lapic_set_reg(apic, reg, val);
+
+		apic->lapic_vtimer.tscdeadline = val;
+		restart_sw_timer(apic);
 		break;
 
 	case APIC_LVT0:
