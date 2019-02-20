@@ -9725,6 +9725,7 @@ static void vmx_apicv_post_state_restore(struct kvm_vcpu *vcpu)
 	memset(vmx->pi_desc.pir, 0, sizeof(vmx->pi_desc.pir));
 }
 
+static void vmx_sync_tsc_deadline(struct vcpu_vmx *vmx);
 static void vmx_complete_atomic_exit(struct vcpu_vmx *vmx)
 {
 	u32 exit_intr_info = 0;
@@ -10246,6 +10247,7 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 	vmx->loaded_vmcs->launched = 1;
 	vmx->idt_vectoring_info = vmcs_read32(IDT_VECTORING_INFO_FIELD);
 
+	vmx_sync_tsc_deadline(vmx);
 	vmx_complete_atomic_exit(vmx);
 	vmx_recover_nmi_blocking(vmx);
 	vmx_complete_interrupts(vmx);
@@ -12669,17 +12671,41 @@ static void vmx_cancel_hv_timer(struct kvm_vcpu *vcpu)
 
 static void vmx_cancel_virt_timer(struct kvm_vcpu *vcpu)
 {
-	struct kvm_lapic *apic = vcpu->arch.apic;
-	u64 tsc_deadline;
-
-	/* read from the virtual tsc register */
-	rdmsrl(0x85f, tsc_deadline);
-	apic->lapic_timer.tscdeadline = tsc_deadline;
-
-	/* and turn off the virtual timer */
+	/* turn off the virtual timer */
 	wrmsrl(0x85f, 0);
 }
 #endif
+
+static void vmx_sync_tsc_deadline(struct vcpu_vmx *vmx)
+{
+	struct kvm_vcpu *vcpu = &vmx->vcpu;
+	struct kvm_lapic *apic = vcpu->arch.apic;
+	struct kvm_timer *ktimer = &apic->lapic_timer;
+	u64 tsc_deadline;
+	u64 tmp_tsc_deadline;
+	u32 low;
+	u32 high;
+
+	if (!timer_opt_enable)
+		return;
+
+	/* read from the virtual tsc register */
+	rdmsrl(0x85f, tsc_deadline);
+	low = tsc_deadline;
+
+	rdmsrl(0x860, tmp_tsc_deadline);
+	high = tmp_tsc_deadline;
+
+	tsc_deadline =  (((u64)high) << 32) | low;
+
+	if (apic->lapic_timer.tscdeadline != tsc_deadline) {
+		apic->lapic_timer.tscdeadline = tsc_deadline;
+	}
+
+	if (tsc_deadline) {
+		ktimer->hw_timer_in_use[VIRT_TIMER] = true;
+	}
+}
 
 static void vmx_sched_in(struct kvm_vcpu *vcpu, int cpu)
 {
