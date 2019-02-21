@@ -196,7 +196,7 @@ struct kvm_vmx {
 	bool ept_identity_pagetable_done;
 	gpa_t ept_identity_map_addr;
 };
-bool timer_opt_enable = 0;
+bool timer_opt_enable = 1;
 
 #define NR_AUTOLOAD_MSRS 8
 
