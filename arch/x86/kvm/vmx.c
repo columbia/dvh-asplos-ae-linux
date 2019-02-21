@@ -9053,16 +9053,21 @@ static bool handle_nvm_tsc_deadline(struct kvm_vcpu *vcpu)
 	u64 val_reg;
 	void *vapic_page;
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
+	u32 low, high;
 
 	/* Schedule a background timer */
-	val_reg = (vcpu->arch.regs[VCPU_REGS_RAX] & -1u)
-		| ((u64)(vcpu->arch.regs[VCPU_REGS_RDX] & -1u) << 32);
+
+	low = vcpu->arch.regs[VCPU_REGS_RAX] & -1u;
+	high = vcpu->arch.regs[VCPU_REGS_RDX] & -1u;
+	val_reg = low | (((u64)high) << 32);
+
 	vapic_page = kmap(vmx->nested.virtual_apic_page);
 	val_vapic = kvm_lapic_get_l2_reg(vapic_page, APIC_TSC_DEADLINE);
 	kunmap(vmx->nested.virtual_apic_page);
 
 	/* Make tsc_deadline set by nvm visible to L1 */
-	kvm_lapic_reg_write(vcpu->arch.apic, APIC_V_TSC_DEADLINE, val_reg);
+	kvm_lapic_reg_write(vcpu->arch.apic, APIC_V_TSC_DEADLINE2, high);
+	kvm_lapic_reg_write(vcpu->arch.apic, APIC_V_TSC_DEADLINE, low);
 
 	/*
 	   if (val_reg == val_vapic) {

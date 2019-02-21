@@ -1509,8 +1509,16 @@ static void start_sw_tscdeadline(struct kvm_lapic *apic) {
 }
 
 static void restart_sw_timer(struct  kvm_lapic *apic) {
-	hrtimer_cancel(&apic->lapic_vtimer.timer);
-	__start_sw_tscdeadline(apic, &apic->lapic_vtimer);
+
+	u32 vtsc_low = kvm_lapic_get_reg(apic, APIC_V_TSC_DEADLINE);
+	u32 vtsc_high = kvm_lapic_get_reg(apic, APIC_V_TSC_DEADLINE2);
+	u64 vtsc = (((u64)vtsc_high) << 32) | vtsc_low;
+	struct kvm_timer *vtimer = &apic->lapic_vtimer;
+
+	vtimer->tscdeadline = vtsc;
+
+	hrtimer_cancel(&vtimer->timer);
+	__start_sw_tscdeadline(apic, vtimer);
 }
 
 static void update_target_expiration(struct kvm_lapic *apic, uint32_t old_divisor)
@@ -1838,10 +1846,11 @@ int kvm_lapic_reg_write(struct kvm_lapic *apic, u32 reg, u32 val)
 		 * L1 might try to access the virtual tsc_deadline register.
 		 */
 		kvm_lapic_set_reg(apic, reg, val);
-
-		apic->lapic_vtimer.tscdeadline = val;
 		restart_sw_timer(apic);
 		break;
+	case APIC_V_TSC_DEADLINE2:
+		kvm_lapic_set_reg(apic, reg, val);
+		break;;
 
 	case APIC_LVT0:
 		apic_manage_nmi_watchdog(apic, val);
@@ -2593,6 +2602,8 @@ int kvm_x2apic_msr_write(struct kvm_vcpu *vcpu, u32 msr, u64 data)
 	/* if this is ICR write vector before command */
 	if (reg == APIC_ICR)
 		kvm_lapic_reg_write(apic, APIC_ICR2, (u32)(data >> 32));
+	if (reg == APIC_V_TSC_DEADLINE)
+		kvm_lapic_reg_write(apic, APIC_V_TSC_DEADLINE2, (u32)(data >> 32));
 	return kvm_lapic_reg_write(apic, reg, (u32)data);
 }
 
