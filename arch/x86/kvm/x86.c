@@ -3156,7 +3156,7 @@ void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 			vcpu->arch.tsc_catchup = 1;
 		}
 
-		if (kvm_lapic_hv_timer_in_use(vcpu))
+		if (kvm_lapic_hw_timer_in_use(vcpu))
 			kvm_lapic_restart_hv_timer(vcpu);
 
 		/*

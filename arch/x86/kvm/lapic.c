@@ -1575,6 +1575,24 @@ bool kvm_lapic_hv_timer_in_use(struct kvm_vcpu *vcpu)
 }
 EXPORT_SYMBOL_GPL(kvm_lapic_hv_timer_in_use);
 
+bool kvm_lapic_hw_timer_in_use(struct kvm_vcpu *vcpu)
+{
+	bool ret = false;
+	struct kvm_lapic *apic = vcpu->arch.apic;
+	struct kvm_timer *ktimer = &apic->lapic_timer;
+	int timer;
+
+	if (!lapic_in_kernel(vcpu))
+		return false;
+
+	for (timer = 0; timer < HW_TIMER_MAX; timer++) {
+		ret |= ktimer->hw_timer_in_use[timer];
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(kvm_lapic_hw_timer_in_use);
+
 static void cancel_hw_timer(struct kvm_lapic *apic, int timer)
 {
 	WARN_ON(preemptible());
@@ -1699,8 +1717,7 @@ void kvm_lapic_switch_to_sw_timer(struct kvm_vcpu *vcpu)
 	struct kvm_lapic *apic = vcpu->arch.apic;
 
 	preempt_disable();
-	/* Possibly the TSC deadline timer is not enabled yet */
-	if (apic->lapic_timer.hw_timer_in_use[HV_TIMER])
+	if (kvm_lapic_hw_timer_in_use(vcpu))
 		start_sw_timer(apic);
 	preempt_enable();
 }
