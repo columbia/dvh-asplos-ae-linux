@@ -1726,11 +1726,11 @@ void kvm_lapic_expired_hv_timer(struct kvm_vcpu *vcpu)
 }
 EXPORT_SYMBOL_GPL(kvm_lapic_expired_hv_timer);
 
-void kvm_lapic_switch_to_hv_timer(struct kvm_vcpu *vcpu)
+void kvm_lapic_switch_to_hw_timer(struct kvm_vcpu *vcpu)
 {
 	restart_apic_timer(vcpu->arch.apic);
 }
-EXPORT_SYMBOL_GPL(kvm_lapic_switch_to_hv_timer);
+EXPORT_SYMBOL_GPL(kvm_lapic_switch_to_hw_timer);
 
 void kvm_lapic_switch_to_sw_timer(struct kvm_vcpu *vcpu)
 {
@@ -1743,11 +1743,18 @@ void kvm_lapic_switch_to_sw_timer(struct kvm_vcpu *vcpu)
 }
 EXPORT_SYMBOL_GPL(kvm_lapic_switch_to_sw_timer);
 
-void kvm_lapic_restart_hv_timer(struct kvm_vcpu *vcpu)
+void kvm_lapic_restart_hw_timer(struct kvm_vcpu *vcpu)
 {
 	struct kvm_lapic *apic = vcpu->arch.apic;
+	bool hw_timer_in_use = false;
+	int timer;
 
-	WARN_ON(!apic->lapic_timer.hw_timer_in_use[HV_TIMER]);
+	for (timer = 0; timer < HW_TIMER_MAX; timer++)
+		hw_timer_in_use |= apic->lapic_timer.hw_timer_in_use[timer];
+
+	if (!hw_timer_in_use)
+		WARN_ON(1);
+
 	restart_apic_timer(apic);
 }
 

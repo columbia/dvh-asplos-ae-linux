@@ -3157,7 +3157,7 @@ void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 		}
 
 		if (kvm_lapic_hw_timer_in_use(vcpu))
-			kvm_lapic_restart_hv_timer(vcpu);
+			kvm_lapic_restart_hw_timer(vcpu);
 
 		/*
 		 * On a host with synchronized TSC, there is no need to update

@@ -12848,8 +12848,9 @@ static void pi_post_block(struct kvm_vcpu *vcpu)
 
 static void vmx_post_block(struct kvm_vcpu *vcpu)
 {
+	/* hv timer is the only hw timer for now */
 	if (kvm_x86_ops->set_hv_timer)
-		kvm_lapic_switch_to_hv_timer(vcpu);
+		kvm_lapic_switch_to_hw_timer(vcpu);
 
 	pi_post_block(vcpu);
 }
