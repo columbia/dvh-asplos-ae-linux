@@ -1568,15 +1568,6 @@ static void start_sw_period(struct kvm_lapic *apic)
 		HRTIMER_MODE_ABS_PINNED);
 }
 
-bool kvm_lapic_hv_timer_in_use(struct kvm_vcpu *vcpu)
-{
-	if (!lapic_in_kernel(vcpu))
-		return false;
-
-	return vcpu->arch.apic->lapic_timer.hw_timer_in_use[HV_TIMER];
-}
-EXPORT_SYMBOL_GPL(kvm_lapic_hv_timer_in_use);
-
 bool kvm_lapic_hw_timer_in_use(struct kvm_vcpu *vcpu)
 {
 	bool ret = false;
