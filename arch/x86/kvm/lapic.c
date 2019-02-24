@@ -70,6 +70,8 @@
 #define APIC_BROADCAST			0xFF
 #define X2APIC_BROADCAST		0xFFFFFFFFul
 
+extern bool timer_opt_enable;
+
 static inline int apic_test_vector(int vec, void *bitmap)
 {
 	return test_bit(VEC_POS(vec), (bitmap) + REG_POS(vec));
@@ -1657,6 +1659,11 @@ static bool start_hv_timer(struct kvm_lapic *apic)
 	return start_hw_timer(apic, HV_TIMER);
 }
 
+static bool start_virt_timer(struct kvm_lapic *apic)
+{
+	return start_hw_timer(apic, VIRT_TIMER);
+}
+
 static void start_sw_timer(struct kvm_lapic *apic)
 {
 	struct kvm_timer *ktimer = &apic->lapic_timer;
@@ -1679,9 +1686,17 @@ static void start_sw_timer(struct kvm_lapic *apic)
 
 static void restart_apic_timer(struct kvm_lapic *apic)
 {
+	bool hw_timer = false;
+
 	preempt_disable();
-	if (!start_hv_timer(apic))
+	if (timer_opt_enable)
+		hw_timer = start_virt_timer(apic);
+	else
+		hw_timer = start_hv_timer(apic);
+
+	if (!hw_timer)
 		start_sw_timer(apic);
+
 	preempt_enable();
 }
 
