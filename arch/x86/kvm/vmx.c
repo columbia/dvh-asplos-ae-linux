@@ -12605,6 +12605,7 @@ static int __vmx_set_hw_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc,
 {
 	struct vcpu_vmx *vmx;
 	u64 tscl, guest_tscl, delta_tsc, lapic_timer_advance_cycles;
+	struct kvm_lapic *apic = vcpu->arch.apic;
 
 	if (kvm_mwait_in_guest(vcpu->kvm))
 		return -EOPNOTSUPP;
@@ -12641,8 +12642,9 @@ static int __vmx_set_hw_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc,
 		vmx->hv_deadline_tsc = tscl + delta_tsc;
 		vmcs_set_bits(PIN_BASED_VM_EXEC_CONTROL,
 				PIN_BASED_VMX_PREEMPTION_TIMER);
-	} else
-		return -EINVAL;
+	} else {
+		wrmsrl(0x85f, apic->lapic_timer.tscdeadline);
+	}
 
 	return delta_tsc == 0;
 }
@@ -12652,12 +12654,30 @@ static int vmx_set_hv_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc)
 	return __vmx_set_hw_timer(vcpu, guest_deadline_tsc, true);
 }
 
+static int vmx_set_virt_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc)
+{
+	return __vmx_set_hw_timer(vcpu, guest_deadline_tsc, false);
+}
+
 static void vmx_cancel_hv_timer(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	vmx->hv_deadline_tsc = -1;
 	vmcs_clear_bits(PIN_BASED_VM_EXEC_CONTROL,
 			PIN_BASED_VMX_PREEMPTION_TIMER);
+}
+
+static void vmx_cancel_virt_timer(struct kvm_vcpu *vcpu)
+{
+	struct kvm_lapic *apic = vcpu->arch.apic;
+	u64 tsc_deadline;
+
+	/* read from the virtual tsc register */
+	rdmsrl(0x85f, tsc_deadline);
+	apic->lapic_timer.tscdeadline = tsc_deadline;
+
+	/* and turn off the virtual timer */
+	wrmsrl(0x85f, 0);
 }
 #endif
 
@@ -13144,6 +13164,9 @@ static struct kvm_x86_ops vmx_x86_ops __ro_after_init = {
 #ifdef CONFIG_X86_64
 	.set_hv_timer = vmx_set_hv_timer,
 	.cancel_hv_timer = vmx_cancel_hv_timer,
+
+	.set_virt_timer = vmx_set_virt_timer,
+	.cancel_virt_timer = vmx_cancel_virt_timer,
 #endif
 
 	.setup_mce = vmx_setup_mce,
