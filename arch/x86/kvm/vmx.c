@@ -2804,6 +2804,9 @@ static void vmx_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 	vmx_vcpu_pi_load(vcpu, cpu);
 	vmx->host_pkru = read_pkru();
 	vmx->host_debugctlmsr = get_debugctlmsr();
+
+	if (timer_opt_enable)
+		kvm_lapic_start_virt_timer(vcpu);
 }
 
 static void vmx_vcpu_pi_put(struct kvm_vcpu *vcpu)
@@ -2825,6 +2828,10 @@ static void vmx_vcpu_put(struct kvm_vcpu *vcpu)
 	vmx_vcpu_pi_put(vcpu);
 
 	__vmx_load_host_state(to_vmx(vcpu));
+
+	/* We only cancel virt timer, not hv_timer, which is not ticking */
+	if (timer_opt_enable)
+		kvm_lapic_switch_virt_to_sw_timer(vcpu);
 }
 
 static bool emulation_required(struct kvm_vcpu *vcpu)

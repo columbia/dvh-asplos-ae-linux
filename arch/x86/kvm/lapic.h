@@ -230,6 +230,7 @@ bool kvm_intr_is_single_vcpu_fast(struct kvm *kvm, struct kvm_lapic_irq *irq,
 int kvm_vector_to_index(u32 vector, u32 dest_vcpus,
 			const unsigned long *bitmap, u32 bitmap_size);
 void kvm_lapic_switch_to_sw_timer(struct kvm_vcpu *vcpu);
+void kvm_lapic_switch_virt_to_sw_timer(struct kvm_vcpu *vcpu);
 void kvm_lapic_switch_to_hw_timer(struct kvm_vcpu *vcpu);
 void kvm_lapic_expired_hv_timer(struct kvm_vcpu *vcpu);
 void kvm_lapic_restart_hw_timer(struct kvm_vcpu *vcpu);
@@ -241,4 +242,5 @@ static inline enum lapic_mode kvm_apic_mode(u64 apic_base)
 
 void kvm_lapic_timer_expired(struct kvm_vcpu *vcpu);
 bool kvm_lapic_hw_timer_in_use(struct kvm_vcpu *vcpu);
+void kvm_lapic_start_virt_timer(struct kvm_vcpu *vcpu);
 #endif

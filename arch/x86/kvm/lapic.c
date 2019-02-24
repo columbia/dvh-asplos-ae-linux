@@ -1655,6 +1655,13 @@ static bool start_virt_timer(struct kvm_lapic *apic)
 	return start_hw_timer(apic, VIRT_TIMER);
 }
 
+void kvm_lapic_start_virt_timer(struct kvm_vcpu *vcpu)
+{
+	struct kvm_lapic *apic = vcpu->arch.apic;
+
+	start_virt_timer(apic);
+}
+
 static void __start_sw_timer(struct kvm_lapic *apic)
 {
 	struct kvm_timer *ktimer = &apic->lapic_timer;
@@ -1740,6 +1747,20 @@ void kvm_lapic_switch_to_sw_timer(struct kvm_vcpu *vcpu)
 	preempt_enable();
 }
 EXPORT_SYMBOL_GPL(kvm_lapic_switch_to_sw_timer);
+
+void kvm_lapic_switch_virt_to_sw_timer(struct kvm_vcpu *vcpu)
+{
+	struct kvm_lapic *apic = vcpu->arch.apic;
+	int timer = VIRT_TIMER;
+
+	preempt_disable();
+	if (apic->lapic_timer.hw_timer_in_use[timer]) {
+		cancel_hw_timer(apic, timer);
+		__start_sw_timer(apic);
+	}
+	preempt_enable();
+}
+EXPORT_SYMBOL_GPL(kvm_lapic_switch_virt_to_sw_timer);
 
 void kvm_lapic_restart_hw_timer(struct kvm_vcpu *vcpu)
 {
