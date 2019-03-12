@@ -515,7 +515,49 @@ void kvm_scan_ioapic_routes(struct kvm_vcpu *vcpu,
 	srcu_read_unlock(&kvm->irq_srcu, idx);
 }
 
+extern void find_pi_entry(void);
+
+static void check_pi(struct kvm *kvm)
+{
+	struct kvm_irq_routing_table *irq_rt;
+	struct kvm_kernel_irq_routing_entry *e;
+	u32 gsi;
+	struct pi_desc *pi_desc;
+	struct page *page;
+	struct pi_desc *pi_desc_host = 0;
+
+	irq_rt = srcu_dereference_check(kvm->irq_routing, &kvm->irq_srcu,
+					lockdep_is_held(&kvm->irq_lock));
+
+	for (gsi = 0; gsi < irq_rt->nr_rt_entries; gsi++) {
+		hlist_for_each_entry(e, &irq_rt->map[gsi], link) {
+			if (!e->pi_desc_addr)
+				continue;
+
+			trace_printk("gsi %d has pi\n", gsi);
+
+			pi_desc = (struct pi_desc*)e->pi_desc_addr;
+
+			page = kvm_vcpu_gpa_to_page(kvm->vcpus[0], (u64)pi_desc);
+			if (is_error_page(page))
+				return;
+
+			pi_desc_host = kmap(page);
+			pi_desc_host =
+				(struct pi_desc *)((void *)pi_desc_host  +
+				(unsigned long)((u64)pi_desc & (PAGE_SIZE - 1)));
+
+			/* TODO: how to know the original irte? */
+			/* 1. iterate ir table and find ANY PI entry
+			 * 2. think how to find a matching one.
+			 * 2-1. For now, there should be just one */
+			find_pi_entry();
+		}
+	}
+}
+
 void kvm_arch_irq_routing_update(struct kvm *kvm)
 {
 	kvm_hv_irq_routing_update(kvm);
+	check_pi(kvm);
 }

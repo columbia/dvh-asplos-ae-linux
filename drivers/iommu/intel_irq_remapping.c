@@ -804,6 +804,44 @@ error:
 	return -1;
 }
 
+/* We assume that we only have ONE IOMMU in the system */
+static struct intel_iommu *get_iommu(void)
+{
+	struct dmar_drhd_unit *drhd;
+	struct intel_iommu *iommu;
+	struct intel_iommu *ret = NULL;
+
+	for_each_active_iommu(iommu, drhd) {
+		ret = iommu;
+		trace_printk("get_iommu iommu: %p\n", iommu);
+		break;
+	}
+
+	return ret;
+}
+
+void find_pi_entry(void)
+{
+	struct intel_iommu *iommu = get_iommu();
+	struct irte *irte;
+	int nr = 50; /* we know that idx is 44 and 45 */
+	int i;
+
+	for (i = 0; i < nr; i++) {
+		irte = &iommu->ir_table->base[i];
+
+		if (!irte->present)
+			continue;
+
+		/* Skip regular irte entries */
+		if (!irte->pst)
+			continue;
+
+		trace_printk("[gsi %d] vector for L1: %x\n", i, irte->p_vector);
+	}
+
+}
+
 static int ir_parse_one_hpet_scope(struct acpi_dmar_device_scope *scope,
 				   struct intel_iommu *iommu,
 				   struct acpi_dmar_hardware_unit *drhd)
