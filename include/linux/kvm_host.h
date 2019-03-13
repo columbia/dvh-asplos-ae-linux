@@ -330,6 +330,7 @@ struct kvm_hv_sint {
 
 struct kvm_kernel_irq_routing_entry {
 	u64 pi_desc_addr;
+	u64 pi_desc_host;
 	u32 gsi;
 	u32 type;
 	int (*set)(struct kvm_kernel_irq_routing_entry *e,

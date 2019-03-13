@@ -13156,11 +13156,17 @@ static int vmx_update_pi_irte(struct kvm *kvm, unsigned int host_irq,
 	struct kvm_vcpu *vcpu;
 	struct vcpu_data vcpu_info;
 	int idx, ret = 0;
+	struct pi_desc *pi_desc;
+	struct page *page;
+	struct pi_desc *pi_desc_host = 0;
+	u64 tmp_pi_desc_addr;
 
 	if (!kvm_arch_has_assigned_device(kvm) ||
 		!irq_remapping_cap(IRQ_POSTING_CAP) ||
 		!kvm_vcpu_apicv_active(kvm->vcpus[0]))
 		return 0;
+
+	/* VP can't reach here */
 
 	idx = srcu_read_lock(&kvm->irq_srcu);
 	irq_rt = srcu_dereference(kvm->irq_routing, &kvm->irq_srcu);
@@ -13187,7 +13193,33 @@ static int vmx_update_pi_irte(struct kvm *kvm, unsigned int host_irq,
 		 * We will support full lowest-priority interrupt later.
 		 */
 
+		/* FIXME: kvm_set_msi_irq() always sets PIR for PI, and update
+		 * irq. But what we need here is just irq infow
+		 * are going to send irq. 
+		 * FIXME: we also set PIR....
+		 * But we here just need the real irq number to set in PIR.
+		 */
+
+		if (e->pi_desc_addr && !e->pi_desc_host) {
+			if (current->mm) {
+				pi_desc = (struct pi_desc*)e->pi_desc_addr;
+				page = kvm_vcpu_gpa_to_page(kvm->vcpus[0], (u64)pi_desc);
+				pi_desc_host = kmap(page);
+				pi_desc_host =
+					(struct pi_desc *)((void *)pi_desc_host  +
+							   (unsigned long)((u64)pi_desc & (PAGE_SIZE - 1)));
+				e->pi_desc_host = (u64)pi_desc_host;
+				/* TODO: when to kfree? */
+			} else {
+				WARN_ONCE(1, "vmx_update_pi_irte is called in a kernel thread\n");
+			}
+		}
+
+		tmp_pi_desc_addr = e->pi_desc_addr;
+		e->pi_desc_addr = 0;
+		/* As a temporary solution, just get the MSI translation */
 		kvm_set_msi_irq(kvm, e, &irq);
+		e->pi_desc_addr = tmp_pi_desc_addr;
 		if (!kvm_intr_is_single_vcpu(kvm, &irq, &vcpu)) {
 			/*
 			 * Make sure the IRTE is in remapped mode if
@@ -13204,8 +13236,14 @@ static int vmx_update_pi_irte(struct kvm *kvm, unsigned int host_irq,
 			continue;
 		}
 
-		vcpu_info.pi_desc_addr = __pa(vcpu_to_pi_desc(vcpu));
 		vcpu_info.vector = irq.vector;
+
+		if (!e->pi_desc_host) {
+			vcpu_info.pi_desc_addr = __pa(vcpu_to_pi_desc(vcpu));
+		} else {
+			/* nested PI case -- no VP */
+			vcpu_info.pi_desc_addr = __pa(e->pi_desc_host);
+		}
 
 		trace_kvm_pi_irte_update(host_irq, vcpu->vcpu_id, e->gsi,
 				vcpu_info.vector, vcpu_info.pi_desc_addr, set);

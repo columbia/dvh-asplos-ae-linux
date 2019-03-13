@@ -152,26 +152,11 @@ static bool pi_test_and_set_on(struct pi_desc *pi_desc)
 void kvm_set_msi_irq(struct kvm *kvm, struct kvm_kernel_irq_routing_entry *e,
 		     struct kvm_lapic_irq *irq)
 {
-	struct pi_desc *pi_desc;
-	struct page *page;
-	struct pi_desc *pi_desc_host = 0;
+	struct pi_desc *pi_desc_host;
 
 	trace_kvm_msi_set_irq(e->msi.address_lo | (kvm->arch.x2apic_format ?
 	                                     (u64)e->msi.address_hi << 32 : 0),
 	                      e->msi.data);
-
-	pi_desc = (struct pi_desc*)e->pi_desc_addr;
-	if (pi_desc) {
-		/* FIXME: we always have at least one vcpu... */
-		page = kvm_vcpu_gpa_to_page(kvm->vcpus[0], (u64)pi_desc);
-		if (is_error_page(page))
-			return;
-
-		pi_desc_host = kmap(page);
-		pi_desc_host =
-			(struct pi_desc *)((void *)pi_desc_host  +
-			(unsigned long)((u64)pi_desc & (PAGE_SIZE - 1)));
-	}
 
 	irq->dest_id = (e->msi.address_lo &
 			MSI_ADDR_DEST_ID_MASK) >> MSI_ADDR_DEST_ID_SHIFT;
@@ -187,9 +172,10 @@ void kvm_set_msi_irq(struct kvm *kvm, struct kvm_kernel_irq_routing_entry *e,
 	irq->level = 1;
 	irq->shorthand = 0;
 
-	if (pi_desc_host) {
+	if (e->pi_desc_host) {
 		bool urgent;
 
+		pi_desc_host = (struct pi_desc *)e->pi_desc_host;
 		pi_test_and_set_pir(irq->vector, pi_desc_host);
 
 		/*
@@ -210,7 +196,6 @@ void kvm_set_msi_irq(struct kvm *kvm, struct kvm_kernel_irq_routing_entry *e,
 			irq->trig_mode = 1;
 			irq->level = 0;
 		}
-		kunmap(page);
 	}
 }
 EXPORT_SYMBOL_GPL(kvm_set_msi_irq);
