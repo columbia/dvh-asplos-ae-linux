@@ -6740,6 +6740,11 @@ int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 		ret = kvm_pv_clock_pairing(vcpu, a0, a1);
 		break;
 #endif
+	case KVM_HC_VCPU_PI_DESC:
+		trace_printk("nvcpu %ld pi_desc in L1 GPA: %lx\n", a0, a1);
+		vcpu->kvm->pi_desc_map[a0] = a1;
+		ret = 0;
+		break;
 	default:
 		ret = -KVM_ENOSYS;
 		break;
