@@ -8909,13 +8909,31 @@ static bool nested_vmx_exit_handled_io(struct kvm_vcpu *vcpu,
 	return false;
 }
 
+#define X2APIC_ICR	0x830
+static bool handle_nvm_x2apic_icr(struct kvm_vcpu *src_vcpu)
+{
+	struct kvm_lapic *apic = src_vcpu->arch.apic;
+
+	ASSERT(apic_x2apic_mode(apic));
+
+	return false;
+}
+
 /*
  * Return true if we handled L2 vmexit.
  * Return false if L1 needs to handle it.
  */
 static bool handle_nvm_msr(struct kvm_vcpu *vcpu, u32 exit_reason)
 {
-	/* We do nothing yet */
+	u32 msr_index = vcpu->arch.regs[VCPU_REGS_RCX];
+
+	switch (msr_index) {
+	case X2APIC_ICR:
+		return ipi_opt_enable && handle_nvm_x2apic_icr(vcpu);
+	default:
+		break;
+	}
+
 	return false;
 }
 
