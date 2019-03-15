@@ -50,6 +50,7 @@
 #include <asm/debugreg.h>
 #include <asm/kexec.h>
 #include <asm/apic.h>
+#include <asm/apicdef.h>
 #include <asm/irq_remapping.h>
 #include <asm/mmu_context.h>
 #include <asm/spec-ctrl.h>
@@ -8909,12 +8910,40 @@ static bool nested_vmx_exit_handled_io(struct kvm_vcpu *vcpu,
 	return false;
 }
 
-#define X2APIC_ICR	0x830
+static struct pi_desc *get_pi_desc(int dest_id)
+{
+	return NULL;
+}
+
+#define X2APIC_ICR		0x830
+#define APIC_DEST_NOSHORT	0x0
 static bool handle_nvm_x2apic_icr(struct kvm_vcpu *src_vcpu)
 {
 	struct kvm_lapic *apic = src_vcpu->arch.apic;
+	u32 icr_high, icr_low;
+	struct kvm_lapic_irq irq;
+	struct pi_desc *vm_pi_desc;
 
 	ASSERT(apic_x2apic_mode(apic));
+
+	icr_low = src_vcpu->arch.regs[VCPU_REGS_RAX];
+	icr_high = src_vcpu->arch.regs[VCPU_REGS_RDX];
+	kvm_apic_get_irq(icr_low, icr_high, &irq);
+
+	/* Check delivery mode. Handle single target mode only, not broadcast */
+	if (APIC_DM_FIXED != irq.delivery_mode)
+		return false;
+
+	/* If shorthand is set, let L1 handle it for now */
+	if (APIC_DEST_NOSHORT != irq.shorthand)
+		return false;
+
+	vm_pi_desc = get_pi_desc(irq.dest_id);
+	/* If the guest hypervisor didn't set pi_desc for the dest yet, then
+	 * just take the default path going back to the guest hyp.
+	 */
+	if (!vm_pi_desc)
+		return false;
 
 	return false;
 }
