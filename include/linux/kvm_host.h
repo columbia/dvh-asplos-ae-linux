@@ -448,7 +448,7 @@ struct kvm {
 	struct srcu_struct irq_srcu;
 	pid_t userspace_pid;
 
-	u64 pi_desc_map[20];
+	u64 v_pi_desc[20];
 };
 
 #define kvm_err(fmt, ...) \
