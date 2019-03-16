@@ -6697,6 +6697,22 @@ void kvm_vcpu_deactivate_apicv(struct kvm_vcpu *vcpu)
 	kvm_x86_ops->refresh_apicv_exec_ctrl(vcpu);
 }
 
+static void handle_pi_desc(struct kvm_vcpu *vcpu, u32 nvcpu_apic_id, u64 v_pi_desc)
+{
+	struct page *page;
+	u64 v_pi_desc_map;
+
+	page = kvm_vcpu_gpa_to_page(vcpu, v_pi_desc);
+	v_pi_desc_map = (u64)kmap(page);
+	v_pi_desc_map += (v_pi_desc & (PAGE_SIZE -1));
+
+	trace_printk("nvcpu %d pi_desc in L1 GPA: 0x%llx\n", nvcpu_apic_id, v_pi_desc);
+
+	vcpu->kvm->v_pi_desc[nvcpu_apic_id] = v_pi_desc;
+	vcpu->kvm->v_pi_desc_map[nvcpu_apic_id] = v_pi_desc_map;
+	vcpu->kvm->v_pi_desc_page[nvcpu_apic_id] = page;
+}
+
 int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 {
 	unsigned long nr, a0, a1, a2, a3, ret;
@@ -6741,8 +6757,7 @@ int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 		break;
 #endif
 	case KVM_HC_VCPU_PI_DESC:
-		trace_printk("nvcpu %ld pi_desc in L1 GPA: %lx\n", a0, a1);
-		vcpu->kvm->v_pi_desc[a0] = a1;
+		handle_pi_desc(vcpu, a0, a1);
 		ret = 0;
 		break;
 	default:

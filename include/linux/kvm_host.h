@@ -448,7 +448,10 @@ struct kvm {
 	struct srcu_struct irq_srcu;
 	pid_t userspace_pid;
 
-	u64 v_pi_desc[20];
+#define MAX_V_PI_DESC 20
+	u64 v_pi_desc[MAX_V_PI_DESC]; /* This is in GPA */
+	u64 v_pi_desc_map[MAX_V_PI_DESC]; /* This is in hva */
+	struct page *v_pi_desc_page[MAX_V_PI_DESC]; /* This is in page */
 };
 
 #define kvm_err(fmt, ...) \

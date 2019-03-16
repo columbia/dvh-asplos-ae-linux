@@ -8922,7 +8922,7 @@ static struct pi_desc *get_pi_desc(struct kvm_vcpu *vcpu, int dest_id)
 	 * eventually need to use hash map or something to cover the whole 32bit
 	 * dest id. 
 	 */
-	return (struct pi_desc *)vcpu->kvm->v_pi_desc[dest_id];
+	return (struct pi_desc *)vcpu->kvm->v_pi_desc_map[dest_id];
 }
 
 #define X2APIC_ICR		0x830
