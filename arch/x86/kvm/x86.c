@@ -6697,10 +6697,27 @@ void kvm_vcpu_deactivate_apicv(struct kvm_vcpu *vcpu)
 	kvm_x86_ops->refresh_apicv_exec_ctrl(vcpu);
 }
 
+static void handle_pi_desc_free(struct kvm_vcpu *vcpu, u32 nvcpu_apic_id, u64 v_pi_desc)
+{
+	kunmap(vcpu->kvm->v_pi_desc_page[nvcpu_apic_id]);
+	vcpu->kvm->v_pi_desc[nvcpu_apic_id] = 0;
+	vcpu->kvm->v_pi_desc_map[nvcpu_apic_id] = 0;
+	vcpu->kvm->v_pi_desc_page[nvcpu_apic_id] = NULL;
+
+	trace_printk("nvcpu %d pi_desc in L1 GPA: 0x%llx is cleared\n", nvcpu_apic_id, v_pi_desc);
+
+}
+
 static void handle_pi_desc(struct kvm_vcpu *vcpu, u32 nvcpu_apic_id, u64 v_pi_desc)
 {
 	struct page *page;
 	u64 v_pi_desc_map;
+
+	if (vcpu->kvm->v_pi_desc[nvcpu_apic_id] == v_pi_desc)
+		return;
+
+	if (vcpu->kvm->v_pi_desc[nvcpu_apic_id])
+		handle_pi_desc_free(vcpu, nvcpu_apic_id, v_pi_desc);
 
 	page = kvm_vcpu_gpa_to_page(vcpu, v_pi_desc);
 	v_pi_desc_map = (u64)kmap(page);
@@ -6711,17 +6728,6 @@ static void handle_pi_desc(struct kvm_vcpu *vcpu, u32 nvcpu_apic_id, u64 v_pi_de
 	vcpu->kvm->v_pi_desc[nvcpu_apic_id] = v_pi_desc;
 	vcpu->kvm->v_pi_desc_map[nvcpu_apic_id] = v_pi_desc_map;
 	vcpu->kvm->v_pi_desc_page[nvcpu_apic_id] = page;
-}
-
-static void handle_pi_desc_free(struct kvm_vcpu *vcpu, u32 nvcpu_apic_id, u64 v_pi_desc)
-{
-	kunmap(vcpu->kvm->v_pi_desc_page[nvcpu_apic_id]);
-	vcpu->kvm->v_pi_desc[nvcpu_apic_id] = 0;
-	vcpu->kvm->v_pi_desc_map[nvcpu_apic_id] = 0;
-	vcpu->kvm->v_pi_desc_page[nvcpu_apic_id] = NULL;
-	
-	trace_printk("nvcpu %d pi_desc in L1 GPA: 0x%llx is cleared\n", nvcpu_apic_id, v_pi_desc);
-
 }
 
 int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
