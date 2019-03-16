@@ -27,6 +27,7 @@
 #define KVM_HC_MIPS_CONSOLE_OUTPUT	8
 #define KVM_HC_CLOCK_PAIRING		9
 #define KVM_HC_VCPU_PI_DESC		0xe1
+#define KVM_HC_VCPU_PI_DESC_FREE	0xe2
 
 /*
  * hypercalls use architecture specific

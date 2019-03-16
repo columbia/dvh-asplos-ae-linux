@@ -6713,6 +6713,17 @@ static void handle_pi_desc(struct kvm_vcpu *vcpu, u32 nvcpu_apic_id, u64 v_pi_de
 	vcpu->kvm->v_pi_desc_page[nvcpu_apic_id] = page;
 }
 
+static void handle_pi_desc_free(struct kvm_vcpu *vcpu, u32 nvcpu_apic_id, u64 v_pi_desc)
+{
+	kunmap(vcpu->kvm->v_pi_desc_page[nvcpu_apic_id]);
+	vcpu->kvm->v_pi_desc[nvcpu_apic_id] = 0;
+	vcpu->kvm->v_pi_desc_map[nvcpu_apic_id] = 0;
+	vcpu->kvm->v_pi_desc_page[nvcpu_apic_id] = NULL;
+	
+	trace_printk("nvcpu %d pi_desc in L1 GPA: 0x%llx is cleared\n", nvcpu_apic_id, v_pi_desc);
+
+}
+
 int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 {
 	unsigned long nr, a0, a1, a2, a3, ret;
@@ -6758,6 +6769,10 @@ int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 #endif
 	case KVM_HC_VCPU_PI_DESC:
 		handle_pi_desc(vcpu, a0, a1);
+		ret = 0;
+		break;
+	case KVM_HC_VCPU_PI_DESC_FREE:
+		handle_pi_desc_free(vcpu, a0, a1);
 		ret = 0;
 		break;
 	default:
