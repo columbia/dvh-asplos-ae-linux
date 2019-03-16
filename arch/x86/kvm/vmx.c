@@ -6267,6 +6267,10 @@ static void vmx_vcpu_setup(struct vcpu_vmx *vmx)
 
 		vmcs_write16(POSTED_INTR_NV, POSTED_INTR_VECTOR);
 		vmcs_write64(POSTED_INTR_DESC_ADDR, __pa((&vmx->pi_desc)));
+
+		/* Telling hw which pi_desc it needs to access for this target
+		 * vcpu. apic_id for the virtual cpu is vcpu_id in the kvm */
+		kvm_hypercall2(0xe1, vmx->vcpu.vcpu_id, __pa((&vmx->pi_desc)));
 	}
 
 	if (!kvm_pause_in_guest(vmx->vcpu.kvm)) {
@@ -10361,6 +10365,9 @@ static void vmx_free_vcpu_nested(struct kvm_vcpu *vcpu)
 static void vmx_free_vcpu(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
+
+	/* Tell hw that we don't run the vcpu anymore */
+	kvm_hypercall2(0xe2, vmx->vcpu.vcpu_id, __pa((&vmx->pi_desc)));
 
 	if (enable_pml)
 		vmx_destroy_pml_buffer(vmx);
