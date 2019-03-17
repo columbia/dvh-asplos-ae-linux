@@ -8912,6 +8912,18 @@ static bool nested_vmx_exit_handled_io(struct kvm_vcpu *vcpu,
 	return false;
 }
 
+static bool update_virtual_pi_desc(struct pi_desc *v_pi_desc, int vector)
+{
+	if (pi_test_and_set_pir(vector, v_pi_desc))
+		return false;
+
+	/* If a previous notification has sent the IPI, nothing to do.  */
+	if (pi_test_and_set_on(v_pi_desc))
+		return false;
+
+	return true;
+}
+
 static struct pi_desc *get_pi_desc(struct kvm_vcpu *vcpu, int dest_id)
 {
 	if (dest_id > 20) {
@@ -8931,12 +8943,16 @@ static struct pi_desc *get_pi_desc(struct kvm_vcpu *vcpu, int dest_id)
 #define APIC_DEST_NOSHORT	0x0
 static bool handle_nvm_x2apic_icr(struct kvm_vcpu *src_vcpu)
 {
-	struct kvm_lapic *apic = src_vcpu->arch.apic;
+	struct kvm_lapic *lapic = src_vcpu->arch.apic;
+	struct kvm *kvm = src_vcpu->kvm;
 	u32 icr_high, icr_low;
 	struct kvm_lapic_irq irq;
 	struct pi_desc *vm_pi_desc;
+	bool need_notify;
+	struct pi_desc old;
+	struct kvm_vcpu *dest_vcpu;
 
-	ASSERT(apic_x2apic_mode(apic));
+	ASSERT(apic_x2apic_mode(lapic));
 
 	icr_low = src_vcpu->arch.regs[VCPU_REGS_RAX];
 	icr_high = src_vcpu->arch.regs[VCPU_REGS_RDX];
@@ -8957,7 +8973,27 @@ static bool handle_nvm_x2apic_icr(struct kvm_vcpu *src_vcpu)
 	if (!vm_pi_desc)
 		return false;
 
-	return false;
+	/* 1. setup virtual pi_desc */
+	/* This is what the virtual HW always do regardless of L2 running state
+	 * -- think about IOMMU behavior for the regular passthrough.
+	 */
+	need_notify = update_virtual_pi_desc(vm_pi_desc, irq.vector);
+
+	/* 2. HW always triggers NV to ndst as specified in v pi_desc.
+	 * Then the CPU will decide whether to raise irq to the VM (i.e. nVM in
+	 * our case) or not. The host hypervisor as virtual HW, it emulates this
+	 * behavior
+	 */
+	if (need_notify) {
+		old.control = vm_pi_desc->control;
+		dest_vcpu = kvm->vcpus[old.ndst];
+
+		vmx_deliver_posted_interrupt(dest_vcpu, old.nv);
+	}
+
+
+	to_vmx(src_vcpu)->nvm_emulation_done = 1;
+	return true;
 }
 
 /*
