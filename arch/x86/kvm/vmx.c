@@ -8938,7 +8938,7 @@ static bool handle_nvm_x2apic_icr(struct kvm_vcpu *src_vcpu)
 
 	icr_low = src_vcpu->arch.regs[VCPU_REGS_RAX];
 	icr_high = src_vcpu->arch.regs[VCPU_REGS_RDX];
-	kvm_apic_get_irq(icr_low, icr_high, &irq);
+	kvm_apic_get_irq(lapic, icr_low, icr_high, &irq);
 
 	/* Check delivery mode. Handle single target mode only, not broadcast */
 	if (APIC_DM_FIXED != irq.delivery_mode)

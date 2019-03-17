@@ -1140,7 +1140,8 @@ void kvm_apic_set_eoi_accelerated(struct kvm_vcpu *vcpu, int vector)
 }
 EXPORT_SYMBOL_GPL(kvm_apic_set_eoi_accelerated);
 
-void kvm_apic_get_irq(u32 icr_low, u32 icr_high, struct kvm_lapic_irq *irq)
+void kvm_apic_get_irq(struct kvm_lapic *apic, u32 icr_low, u32 icr_high,
+		      struct kvm_lapic_irq *irq)
 {
 	if (!irq)
 		return;
@@ -1152,6 +1153,11 @@ void kvm_apic_get_irq(u32 icr_low, u32 icr_high, struct kvm_lapic_irq *irq)
 	irq->trig_mode = icr_low & APIC_INT_LEVELTRIG;
 	irq->shorthand = icr_low & APIC_SHORT_MASK;
 	irq->msi_redir_hint = false;
+
+	if (apic_x2apic_mode(apic))
+		irq->dest_id = icr_high;
+	else
+		irq->dest_id = GET_APIC_DEST_FIELD(icr_high);
 }
 
 static void apic_send_ipi(struct kvm_lapic *apic)
@@ -1160,11 +1166,7 @@ static void apic_send_ipi(struct kvm_lapic *apic)
 	u32 icr_high = kvm_lapic_get_reg(apic, APIC_ICR2);
 	struct kvm_lapic_irq irq;
 
-	kvm_apic_get_irq(icr_low, icr_high, &irq);
-	if (apic_x2apic_mode(apic))
-		irq.dest_id = icr_high;
-	else
-		irq.dest_id = GET_APIC_DEST_FIELD(icr_high);
+	kvm_apic_get_irq(apic, icr_low, icr_high, &irq);
 
 	trace_kvm_apic_ipi(icr_low, irq.dest_id);
 
