@@ -857,6 +857,8 @@ struct vcpu_vmx {
 	 */
 	u64 msr_ia32_feature_control;
 	u64 msr_ia32_feature_control_valid_bits;
+
+	bool nvm_emulation_done;
 };
 
 enum segment_cache_field {
@@ -9547,8 +9549,12 @@ static int vmx_handle_exit(struct kvm_vcpu *vcpu)
 	if (vmx->emulation_required)
 		return handle_invalid_guest_state(vcpu);
 
+	vmx->nvm_emulation_done = 0;
 	if (is_guest_mode(vcpu) && nested_vmx_exit_reflected(vcpu, exit_reason))
 		return nested_vmx_reflect_vmexit(vcpu, exit_reason);
+
+	if (vmx->nvm_emulation_done)
+		return kvm_skip_emulated_instruction(vcpu);
 
 	if (exit_reason & VMX_EXIT_REASONS_FAILED_VMENTRY) {
 		dump_vmcs();
