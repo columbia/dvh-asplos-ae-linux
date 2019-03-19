@@ -389,6 +389,11 @@ struct kvm_memslots {
 	int used_slots;
 };
 
+struct cpu_irte {
+	u32 dest_apic_id;
+	u64 pi_desc_addr;
+};
+
 struct kvm {
 	spinlock_t mmu_lock;
 	struct mutex slots_lock;
@@ -449,6 +454,9 @@ struct kvm {
 	struct srcu_struct srcu;
 	struct srcu_struct irq_srcu;
 	pid_t userspace_pid;
+
+	struct cpu_irte cpu_ir_table[10];
+	struct cpu_irte cpu_ir_table_nested[10];
 };
 
 #define kvm_err(fmt, ...) \
