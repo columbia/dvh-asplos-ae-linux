@@ -6730,6 +6730,38 @@ static void handle_pi_desc(struct kvm_vcpu *vcpu, u32 nvcpu_apic_id, u64 v_pi_de
 	vcpu->kvm->v_pi_desc_page[nvcpu_apic_id] = page;
 }
 
+static void free_cpu_ir_table(struct kvm_vcpu *vcpu)
+{
+	kunmap(vcpu->cpu_ir_table_page);
+	vcpu->cpu_ir_table = 0;
+	vcpu->cpu_ir_table_map = 0;
+	vcpu->cpu_ir_table_page = NULL;
+
+}
+static void handle_cpu_ir_table(struct kvm_vcpu *vcpu, u64 cpu_irt)
+{
+	struct page *page;
+	u64 cpu_irt_map;
+
+	if (vcpu->cpu_ir_table && (vcpu->cpu_ir_table != cpu_irt))
+		free_cpu_ir_table(vcpu);
+
+	page = kvm_vcpu_gpa_to_page(vcpu, cpu_irt);
+	cpu_irt_map = (u64)kmap(page);
+	cpu_irt_map += (cpu_irt_map & (PAGE_SIZE -1));
+
+	trace_printk("L1 cpu %d set CPU IR table. GPA: 0x%llx\n",
+		     vcpu->vcpu_id, (u64) cpu_irt);
+
+	vcpu->cpu_ir_table = cpu_irt;
+	vcpu->cpu_ir_table_map = cpu_irt_map;
+	vcpu->cpu_ir_table_page = page;
+}
+
+static void refresh_cpu_ir_table(struct kvm_vcpu *vcpu, u64 cpu_irt)
+{
+}
+
 int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 {
 	unsigned long nr, a0, a1, a2, a3, ret;
@@ -6779,6 +6811,20 @@ int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 		break;
 	case KVM_HC_VCPU_PI_DESC_FREE:
 		handle_pi_desc_free(vcpu, a0, a1);
+		ret = 0;
+		break;
+	case KVM_HC_CPU_IR_TABLE:
+		/* The table pointer in L1 GPA will be used to handle L2 (or Ln)
+		 * IPI
+		 */
+		handle_cpu_ir_table(vcpu, a0);
+		ret = 0;
+		break;
+	case KVM_HC_CPU_IR_TABLE_REFRESH:
+		/* The table pointer in L1 GPA will be used to handle L2 (or Ln)
+		 * IPI
+		 */
+		refresh_cpu_ir_table(vcpu, a0);
 		ret = 0;
 		break;
 	default:

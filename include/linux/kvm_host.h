@@ -275,6 +275,11 @@ struct kvm_vcpu {
 	bool preempted;
 	struct kvm_vcpu_arch arch;
 	struct dentry *debugfs_dentry;
+
+	u64 cpu_ir_table; /* This is in GPA */
+	u64 cpu_ir_table_map; /* This is in hva */
+	struct page *cpu_ir_table_page; /* This is in page */
+
 };
 
 static inline int kvm_vcpu_exiting_guest_mode(struct kvm_vcpu *vcpu)
