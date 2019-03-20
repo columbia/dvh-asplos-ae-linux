@@ -6741,20 +6741,21 @@ static void free_cpu_ir_table(struct kvm_vcpu *vcpu)
 static void handle_cpu_ir_table(struct kvm_vcpu *vcpu, u64 cpu_irt)
 {
 	struct page *page;
-	u64 cpu_irt_map;
+	u64 cpu_irt_hva;
+	gpa_t cpu_irt_gpa = cpu_irt;
 
-	if (vcpu->cpu_ir_table && (vcpu->cpu_ir_table != cpu_irt))
+	if (vcpu->cpu_ir_table && (vcpu->cpu_ir_table != cpu_irt_gpa))
 		free_cpu_ir_table(vcpu);
 
-	page = kvm_vcpu_gpa_to_page(vcpu, cpu_irt);
-	cpu_irt_map = (u64)kmap(page);
-	cpu_irt_map += (cpu_irt_map & (PAGE_SIZE -1));
+	page = kvm_vcpu_gpa_to_page(vcpu, cpu_irt_gpa);
+	cpu_irt_hva = (u64)kmap(page);
+	cpu_irt_hva += offset_in_page(cpu_irt_gpa);
 
 	trace_printk("L1 cpu %d set CPU IR table. GPA: 0x%llx\n",
-		     vcpu->vcpu_id, (u64) cpu_irt);
+		     vcpu->vcpu_id, (u64) cpu_irt_gpa);
 
-	vcpu->cpu_ir_table = cpu_irt;
-	vcpu->cpu_ir_table_map = cpu_irt_map;
+	vcpu->cpu_ir_table = cpu_irt_gpa;
+	vcpu->cpu_ir_table_map = cpu_irt_hva;
 	vcpu->cpu_ir_table_page = page;
 }
 
