@@ -215,6 +215,11 @@ struct kvm_mmio_fragment {
 	unsigned len;
 };
 
+struct cpu_irte {
+	u32 dest_apic_id;
+	u64 pi_desc_addr;
+};
+
 struct kvm_vcpu {
 	struct kvm *kvm;
 #ifdef CONFIG_PREEMPT_NOTIFIERS

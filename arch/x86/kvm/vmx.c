@@ -8924,19 +8924,32 @@ static bool update_virtual_pi_desc(struct pi_desc *v_pi_desc, int vector)
 	return true;
 }
 
-static struct pi_desc *get_pi_desc(struct kvm_vcpu *vcpu, int dest_id)
+static struct pi_desc *get_pi_desc(struct kvm_vcpu *vcpu, int dest_id,
+				   struct page *page)
 {
+	struct cpu_irte *cpu_irte;
+	u64 pi_desc_map;
+
 	if (dest_id > 20) {
 		pr_err("dest_id is %d, bigger than the limit (20).\n", dest_id);
 		return NULL;
 	}
+
+	if (!vcpu->cpu_ir_table)
+		return NULL;
 
 	/* HACK: we know that kvm nested vcpus will have apic_id same as nested
 	 * vcpu_id, but this is not the case for the real hardware. We
 	 * eventually need to use hash map or something to cover the whole 32bit
 	 * dest id. 
 	 */
-	return (struct pi_desc *)vcpu->kvm->v_pi_desc_map[dest_id];
+	cpu_irte = ((struct cpu_irte *)vcpu->cpu_ir_table_map + dest_id);
+
+	page = kvm_vcpu_gpa_to_page(vcpu, cpu_irte->pi_desc_addr);
+	pi_desc_map = (u64)kmap(page);
+	pi_desc_map += offset_in_page(cpu_irte->pi_desc_addr);
+
+	return (struct pi_desc *)pi_desc_map;
 }
 
 #define X2APIC_ICR		0x830
@@ -8951,6 +8964,7 @@ static bool handle_nvm_x2apic_icr(struct kvm_vcpu *src_vcpu)
 	bool need_notify;
 	struct pi_desc old;
 	struct kvm_vcpu *dest_vcpu;
+	struct page *page;
 
 	ASSERT(apic_x2apic_mode(lapic));
 
@@ -8966,7 +8980,7 @@ static bool handle_nvm_x2apic_icr(struct kvm_vcpu *src_vcpu)
 	if (APIC_DEST_NOSHORT != irq.shorthand)
 		return false;
 
-	vm_pi_desc = get_pi_desc(src_vcpu, irq.dest_id);
+	vm_pi_desc = get_pi_desc(src_vcpu, irq.dest_id, page);
 	/* If the guest hypervisor didn't set pi_desc for the dest yet, then
 	 * just take the default path going back to the guest hyp.
 	 */
@@ -8991,6 +9005,7 @@ static bool handle_nvm_x2apic_icr(struct kvm_vcpu *src_vcpu)
 		vmx_deliver_posted_interrupt(dest_vcpu, old.nv);
 	}
 
+	kunmap(page);
 
 	to_vmx(src_vcpu)->nvm_emulation_done = 1;
 	return true;
