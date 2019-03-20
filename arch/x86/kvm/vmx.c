@@ -10056,6 +10056,13 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 sync_exit:
 	vcpu->sync_shadow_pi_desc = false;
 
+	/* We would like to write CPU IRT pointer in VMCS, but not sure if
+	 * anything is available there in the current architecture. We therefore
+	 * pass the pointer to the L0 hypervisor via vmcall for now even though
+	 * it causes one extra trap to L0 for L2 and L3 switching.
+	 */
+	kvm_hypercall1(0xd1, __pa((vmx->vcpu.kvm->cpu_ir_table)));
+
 	/* Record the guest's net vcpu time for enforced NMI injections. */
 	if (unlikely(!enable_vnmi &&
 		     vmx->loaded_vmcs->soft_vnmi_blocked))
@@ -10492,6 +10499,9 @@ static int vmx_vm_init(struct kvm *kvm)
 {
 	if (!ple_gap)
 		kvm->arch.pause_in_guest = true;
+
+	kvm->cpu_ir_table = kzalloc(sizeof(struct cpu_irte)*10, GFP_KERNEL);
+	kvm->cpu_ir_table_nested = kzalloc(sizeof(struct cpu_irte)*10, GFP_KERNEL);
 	return 0;
 }
 
@@ -12096,7 +12106,7 @@ static int nested_vmx_run(struct kvm_vcpu *vcpu, bool launch)
 	 * pass the pointer to the L0 hypervisor via vmcall for now even though
 	 * it causes one extra trap to L0 for L2 and L3 switching.
 	 */
-	kvm_hypercall1(0xd1, __pa((&vmx->vcpu.kvm->cpu_ir_table_nested)));
+	kvm_hypercall1(0xd1, __pa((vmx->vcpu.kvm->cpu_ir_table_nested)));
 
 	/*
 	 * If we're entering a halted L2 vcpu and the L2 vcpu won't be woken
@@ -12687,7 +12697,7 @@ static void nested_vmx_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason,
 	 * pass the pointer to the L0 hypervisor via vmcall for now even though
 	 * it causes one extra trap to L0 for L2 and L3 switching.
 	 */
-	kvm_hypercall1(0xd1, __pa((&vmx->vcpu.kvm->cpu_ir_table)));
+	kvm_hypercall1(0xd1, __pa((vmx->vcpu.kvm->cpu_ir_table)));
 
 	if (likely(!vmx->fail)) {
 		/*

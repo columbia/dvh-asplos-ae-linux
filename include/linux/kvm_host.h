@@ -455,8 +455,8 @@ struct kvm {
 	struct srcu_struct irq_srcu;
 	pid_t userspace_pid;
 
-	struct cpu_irte cpu_ir_table[10];
-	struct cpu_irte cpu_ir_table_nested[10];
+	struct cpu_irte *cpu_ir_table;
+	struct cpu_irte *cpu_ir_table_nested;
 };
 
 #define kvm_err(fmt, ...) \
