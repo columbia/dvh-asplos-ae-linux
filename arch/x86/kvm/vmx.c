@@ -8949,6 +8949,29 @@ static struct pi_desc *get_pi_desc(struct kvm_vcpu *vcpu, int dest_id,
 	pi_desc_map = (u64)kmap(page);
 	pi_desc_map += offset_in_page(cpu_irte->pi_desc_addr);
 
+	if (dest_id != cpu_irte->dest_apic_id) {
+		pr_err("dest id: %d, dest id in tabl: %d\n",
+		       dest_id, cpu_irte->dest_apic_id);
+		kunmap(page);
+		return NULL;
+	}
+
+	if (vcpu->kvm->v_pi_desc[dest_id] != cpu_irte->pi_desc_addr) {
+		pr_err("dest id: %d. GPA hyp: 0x%llx, table: 0x%llx\n",
+		       dest_id, vcpu->kvm->v_pi_desc[dest_id],
+		       cpu_irte->pi_desc_addr);
+		kunmap(page);
+		return NULL;
+	}
+
+	if (vcpu->kvm->v_pi_desc_map[dest_id] != pi_desc_map) {
+		pr_err("map from hyp is 0x%llx, from table 0x%llx\n",
+			vcpu->kvm->v_pi_desc_map[dest_id],
+			pi_desc_map);
+
+		BUG();
+	}
+
 	return (struct pi_desc *)pi_desc_map;
 }
 
@@ -9005,7 +9028,8 @@ static bool handle_nvm_x2apic_icr(struct kvm_vcpu *src_vcpu)
 		vmx_deliver_posted_interrupt(dest_vcpu, old.nv);
 	}
 
-	kunmap(page);
+	if (page)
+		kunmap(page);
 
 	to_vmx(src_vcpu)->nvm_emulation_done = 1;
 	return true;
