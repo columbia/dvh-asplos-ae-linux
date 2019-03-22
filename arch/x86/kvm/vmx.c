@@ -12029,6 +12029,30 @@ fail:
 	return 1;
 }
 
+static void setup_cpu_ir_table_nested(struct kvm_vcpu *vcpu,
+				      struct cpu_irte *vm_table,
+				      struct cpu_irte *shadow_table)
+{
+	int i = 0;
+
+	memset(shadow_table, 0, sizeof(struct cpu_irte) * 10);
+
+	if (!vm_table) {
+		/* VM didnt set cpu ir table yet */
+		return;
+	}
+
+	while ((i == vm_table[i].dest_apic_id) && vm_table[i].pi_desc_addr) {
+		shadow_table[i].dest_apic_id = vm_table[i].dest_apic_id;
+
+		/* Note that shadow_pi_descs are already set before in
+		 * (enter_vmx_non_root_mode() -> nested_get_vmcs12_pages())
+		 */
+		shadow_table[i].pi_desc_addr =
+			(u64)search_shadow_pi_desc(vcpu, vm_table[i].pi_desc_addr);
+		i++;
+	}
+}
 /*
  * nested_vmx_run() handles a nested entry, i.e., a VMLAUNCH or VMRESUME on L1
  * for running an L2 nested guest.
@@ -12040,6 +12064,7 @@ static int nested_vmx_run(struct kvm_vcpu *vcpu, bool launch)
 	u32 interrupt_shadow = vmx_get_interrupt_shadow(vcpu);
 	u32 exit_qual;
 	int ret;
+	struct cpu_irte *vm_ir_table;
 
 	if (!nested_vmx_check_permission(vcpu))
 		return 1;
@@ -12110,6 +12135,20 @@ static int nested_vmx_run(struct kvm_vcpu *vcpu, bool launch)
 	}
 
 	trace_kvm_nested_vmrun(0, 0, 0, 0, 0, 0);
+
+	/* Read the table pointer that L1 set for L2 from vmcs12.
+	 * With PV, we already got the pointer through hypercall and mapped.
+	 *
+	 * cpu_ir_table in vmcs12 can be changed anytime by L1. We forced L1 to
+	 * call hypercall to get the latest value it sets to vmcs12.
+	 */
+	vm_ir_table = (struct cpu_irte *)vcpu->cpu_ir_table_map;
+
+	/* We are going through all items in the table, virtualize, and put it
+	 * in the nested table
+	 */
+	setup_cpu_ir_table_nested(vcpu, vm_ir_table,
+				  vmx->vcpu.kvm->cpu_ir_table_nested);
 
 	/* We would like to write CPU IRT pointer in VMCS, but not sure if
 	 * anything is available there in the current architecture. We therefore
