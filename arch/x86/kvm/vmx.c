@@ -10845,6 +10845,8 @@ static struct pi_desc *get_shadow_pi_desc(struct kvm_vcpu *vcpu, u64 pi_desc_12)
 	if (need_free) {
 		kfree(new_shadow_pi_desc);
 		kfree(map);
+	} else {
+		trace_printk("New shadow_pi_desc: %llx\n", (u64)shadow_pi_desc);
 	}
 
 	return shadow_pi_desc;
@@ -10934,7 +10936,11 @@ static void nested_get_vmcs12_pages(struct kvm_vcpu *vcpu,
 		/* TODO: maybe we don't have to set this up every time.
 		 * nv just need to be set once, and ndst can be set when the
 		 * vcpu is migrated to other pcpu */
-		trace_printk("apic_id in pi_desc 12: %d, translated to: %d in shadow pi_desc\n",
+		trace_printk("pi_desc23: 0x%llx, shadow_pi_desc13: 0x%llx\n",
+			     vmcs12->posted_intr_desc_addr, (u64)shadow_pi_desc);
+		trace_printk("[pi_desc23: 0x%llx] L2 vcpu written in pi_desc23: %d,"
+			     "updated to: L1 vcpu %d in shadow pi_desc\n",
+			     vmcs12->posted_intr_desc_addr,
 			     vmx->nested.pi_desc->ndst,
 			     vcpu->kvm->vcpus[vmx->nested.pi_desc->ndst]->cpu);
 
@@ -12667,6 +12673,9 @@ static void nested_vmx_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason,
 		vmx->nested.virtual_apic_page = NULL;
 	}
 	if (vmx->nested.pi_desc_page) {
+		trace_printk("on exit, pi_desc23: 0x%llx, shadow_pi_desc13: 0x%llx\n",
+			     vmcs12->posted_intr_desc_addr, (u64)shadow_pi_desc);
+
 		move_pir_on(vmx->nested.pi_desc, shadow_pi_desc);
 		/* Even though the shadow_pi_desc is not written to vmcs02
 		 * anymore, hardware (e.g. recursively assigned device or IPI
