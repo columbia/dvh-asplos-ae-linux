@@ -276,6 +276,10 @@ struct kvm_vcpu {
 	struct kvm_vcpu_arch arch;
 	struct dentry *debugfs_dentry;
 
+	u64 cpu_ir_table; /* This is in GPA */
+	u64 cpu_ir_table_map; /* This is in hva */
+	struct page *cpu_ir_table_page; /* This is in page */
+
 	bool sync_shadow_pi_desc;
 };
 

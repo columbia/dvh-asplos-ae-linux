@@ -6697,6 +6697,39 @@ void kvm_vcpu_deactivate_apicv(struct kvm_vcpu *vcpu)
 	kvm_x86_ops->refresh_apicv_exec_ctrl(vcpu);
 }
 
+static void free_cpu_ir_table(struct kvm_vcpu *vcpu)
+{
+	kunmap(vcpu->cpu_ir_table_page);
+	vcpu->cpu_ir_table = 0;
+	vcpu->cpu_ir_table_map = 0;
+	vcpu->cpu_ir_table_page = NULL;
+
+}
+static void handle_cpu_ir_table(struct kvm_vcpu *vcpu, u64 cpu_irt)
+{
+	struct page *page;
+	u64 cpu_irt_hva;
+	gpa_t cpu_irt_gpa = cpu_irt;
+
+	if (vcpu->cpu_ir_table && (vcpu->cpu_ir_table != cpu_irt_gpa))
+		free_cpu_ir_table(vcpu);
+
+	page = kvm_vcpu_gpa_to_page(vcpu, cpu_irt_gpa);
+	cpu_irt_hva = (u64)kmap(page);
+	cpu_irt_hva += offset_in_page(cpu_irt_gpa);
+
+	trace_printk("L1 cpu %d set CPU IR table. GPA: 0x%llx\n",
+		     vcpu->vcpu_id, (u64) cpu_irt_gpa);
+
+	vcpu->cpu_ir_table = cpu_irt_gpa;
+	vcpu->cpu_ir_table_map = cpu_irt_hva;
+	vcpu->cpu_ir_table_page = page;
+}
+
+static void refresh_cpu_ir_table(struct kvm_vcpu *vcpu, u64 cpu_irt)
+{
+}
+
 int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 {
 	unsigned long nr, a0, a1, a2, a3, ret;
@@ -6740,6 +6773,20 @@ int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 		ret = kvm_pv_clock_pairing(vcpu, a0, a1);
 		break;
 #endif
+	case KVM_HC_CPU_IR_TABLE:
+		/* The table pointer in L1 GPA will be used to handle L2 (or Ln)
+		 * IPI
+		 */
+		handle_cpu_ir_table(vcpu, a0);
+		ret = 0;
+		break;
+	case KVM_HC_CPU_IR_TABLE_REFRESH:
+		/* The table pointer in L1 GPA will be used to handle L2 (or Ln)
+		 * IPI
+		 */
+		refresh_cpu_ir_table(vcpu, a0);
+		ret = 0;
+		break;
 	default:
 		ret = -KVM_ENOSYS;
 		break;
