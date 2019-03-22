@@ -179,6 +179,12 @@ int arch_show_interrupts(struct seq_file *p, int prec)
 		seq_printf(p, "%10u ",
 			   irq_stats(j)->kvm_posted_intr_wakeup_ipis);
 	seq_puts(p, "  Posted-interrupt wakeup event\n");
+
+	seq_printf(p, "%*s: ", prec, "NPW");
+	for_each_online_cpu(j)
+		seq_printf(p, "%10u ",
+			   irq_stats(j)->kvm_posted_intr_nested_wakeup_ipis);
+	seq_puts(p, "  Nested posted-interrupt wakeup event\n");
 #endif
 	return 0;
 }
@@ -333,6 +339,20 @@ __visible void smp_kvm_posted_intr_nested_ipi(struct pt_regs *regs)
 	exiting_irq();
 	set_irq_regs(old_regs);
 }
+
+/*
+ * Handler for POSTED_INTERRUPT_NESTED_WAKEUP_VECTOR.
+ */
+__visible void smp_kvm_posted_intr_nested_wakeup_ipi(struct pt_regs *regs)
+{
+	struct pt_regs *old_regs = set_irq_regs(regs);
+
+	entering_ack_irq();
+	inc_irq_stat(kvm_posted_intr_nested_wakeup_ipis);
+	exiting_irq();
+	set_irq_regs(old_regs);
+}
+
 #endif
 
 
