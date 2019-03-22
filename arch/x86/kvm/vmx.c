@@ -10934,6 +10934,10 @@ static void nested_get_vmcs12_pages(struct kvm_vcpu *vcpu,
 		/* TODO: maybe we don't have to set this up every time.
 		 * nv just need to be set once, and ndst can be set when the
 		 * vcpu is migrated to other pcpu */
+		trace_printk("apic_id in pi_desc 12: %d, translated to: %d in shadow pi_desc\n",
+			     vmx->nested.pi_desc->ndst,
+			     vcpu->kvm->vcpus[vmx->nested.pi_desc->ndst]->cpu);
+
 		update_nv_ndst(shadow_pi_desc, POSTED_INTR_NESTED_VECTOR,
 			       cpu_physical_id(vcpu->kvm->vcpus[vmx->nested.pi_desc->ndst]->cpu));
 
