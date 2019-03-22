@@ -728,6 +728,16 @@ static int pi_test_and_set_pir(int vector, struct pi_desc *pi_desc)
 	return test_and_set_bit(vector, (unsigned long *)pi_desc->pir);
 }
 
+static inline void pi_set_pir(int vector, struct pi_desc *pi_desc)
+{
+	set_bit(vector, (unsigned long *)pi_desc->pir);
+}
+
+static inline void pi_clear_pir(int vector, struct pi_desc *pi_desc)
+{
+	clear_bit(vector, (unsigned long *)pi_desc->pir);
+}
+
 static inline void pi_clear_sn(struct pi_desc *pi_desc)
 {
 	return clear_bit(POSTED_INTR_SN,
@@ -750,6 +760,11 @@ static inline int pi_test_on(struct pi_desc *pi_desc)
 {
 	return test_bit(POSTED_INTR_ON,
 			(unsigned long *)&pi_desc->control);
+}
+
+static inline void pi_set_on(struct pi_desc *pi_desc)
+{
+	set_bit(POSTED_INTR_ON, (unsigned long *)&pi_desc->control);
 }
 
 static inline int pi_test_sn(struct pi_desc *pi_desc)
@@ -10658,6 +10673,45 @@ static void vmx_inject_page_fault_nested(struct kvm_vcpu *vcpu,
 static inline bool nested_vmx_prepare_msr_bitmap(struct kvm_vcpu *vcpu,
 						 struct vmcs12 *vmcs12);
 
+static void move_pir_on(struct pi_desc *dst, struct pi_desc *src)
+{
+	u32 i, vec, x;
+	u32 *pir_src, *pir_dst;
+
+	pir_src = src->pir;
+	pir_dst = dst->pir;
+
+	/* Move 256 bits */
+	for (i = vec = 0; i <= 7; i++, vec += 32) {
+		while (READ_ONCE(pir_src[i])) {
+			/* find the first bit set from LSB 0 to MSB 31 */
+			x = __ffs(pir_src[i]);
+			pi_clear_pir(x + vec, src);
+			pi_set_pir(x + vec, dst);
+		}
+	}
+
+	if (pi_test_and_clear_on(src))
+		pi_set_on(dst);
+}
+
+static void update_nv_ndst(struct pi_desc *pi_desc, u8 new_nv, unsigned int dest)
+{
+	struct pi_desc old, new;
+
+	do {
+		old.control = new.control = pi_desc->control;
+
+		if (x2apic_enabled())
+			new.ndst = dest;
+		else
+			new.ndst = (dest << 8) & 0xFF00;
+
+		new.nv = new_nv;
+	} while (cmpxchg64(&pi_desc->control, old.control,
+			   new.control) != old.control);
+}
+
 struct shadow_pi_desc_map {
 	u64 pi_desc_12;
 	struct pi_desc *shadow_pi_desc;
@@ -10797,10 +10851,14 @@ static void nested_get_vmcs12_pages(struct kvm_vcpu *vcpu,
 			(PAGE_SIZE - 1)));
 
 		shadow_pi_desc = get_shadow_pi_desc(vcpu, vmcs12->posted_intr_desc_addr);
-		vmcs_write64(POSTED_INTR_DESC_ADDR,
-			page_to_phys(vmx->nested.pi_desc_page) +
-			(unsigned long)(vmcs12->posted_intr_desc_addr &
-			(PAGE_SIZE - 1)));
+		move_pir_on(shadow_pi_desc, vmx->nested.pi_desc);
+		/* TODO: maybe we don't have to set this up every time.
+		 * nv just need to be set once, and ndst can be set when the
+		 * vcpu is migrated to other pcpu */
+		update_nv_ndst(shadow_pi_desc, POSTED_INTR_NESTED_VECTOR,
+			       cpu_physical_id(vcpu->kvm->vcpus[vmx->nested.pi_desc->ndst]->cpu));
+
+		vmcs_write64(POSTED_INTR_DESC_ADDR, __pa(shadow_pi_desc));
 	}
 	if (nested_vmx_prepare_msr_bitmap(vcpu, vmcs12))
 		vmcs_set_bits(CPU_BASED_VM_EXEC_CONTROL,
@@ -12517,6 +12575,17 @@ static void nested_vmx_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason,
 		vmx->nested.virtual_apic_page = NULL;
 	}
 	if (vmx->nested.pi_desc_page) {
+		move_pir_on(vmx->nested.pi_desc, shadow_pi_desc);
+		/* Even though the shadow_pi_desc is not written to vmcs02
+		 * anymore, hardware (e.g. recursively assigned device or IPI
+		 * hardware extension) will access the shadow_pi_desc to inject
+		 * interrupts to nested VMs. Set the wakeup vector since nested
+		 * VM is not running (and the host hypervisor doesn't know it's
+		 * going to be blocked or not - better safe than sorry).
+		 */
+		update_nv_ndst(shadow_pi_desc, POSTED_INTR_NESTED_WAKEUP_VECTOR,
+			       shadow_pi_desc->ndst);
+
 		kunmap(vmx->nested.pi_desc_page);
 		kvm_release_page_dirty(vmx->nested.pi_desc_page);
 		vmx->nested.pi_desc_page = NULL;
