@@ -853,6 +853,9 @@ struct kvm_arch {
 
 	bool x2apic_format;
 	bool x2apic_broadcast_quirk_disabled;
+
+	struct list_head shadow_pi_desc_list;
+	spinlock_t shadow_pi_desc_list_lock;
 };
 
 struct kvm_vm_stat {

@@ -661,6 +661,7 @@ struct nested_vmx {
 	struct page *virtual_apic_page;
 	struct page *pi_desc_page;
 	struct pi_desc *pi_desc;
+	struct pi_desc *shadow_pi_desc;
 	bool pi_pending;
 	u16 posted_intr_nv;
 
@@ -10657,12 +10658,72 @@ static void vmx_inject_page_fault_nested(struct kvm_vcpu *vcpu,
 static inline bool nested_vmx_prepare_msr_bitmap(struct kvm_vcpu *vcpu,
 						 struct vmcs12 *vmcs12);
 
+struct shadow_pi_desc_map {
+	u64 pi_desc_12;
+	struct pi_desc *shadow_pi_desc;
+
+	struct list_head list;
+};
+
+static struct pi_desc *search_shadow_pi_desc(struct kvm_vcpu *vcpu, u64 pi_desc_12)
+{
+	struct shadow_pi_desc_map *map;
+	struct list_head *shadow_pi_desc_list = &vcpu->kvm->arch.shadow_pi_desc_list;
+
+	/* Check if it's already there */
+	list_for_each_entry_rcu(map, shadow_pi_desc_list, list) {
+		if (map->pi_desc_12 == pi_desc_12)
+			return map->shadow_pi_desc;
+	}
+	return NULL;
+}
+
+static struct pi_desc *get_shadow_pi_desc(struct kvm_vcpu *vcpu, u64 pi_desc_12)
+{
+	struct shadow_pi_desc_map *map;
+	struct pi_desc *shadow_pi_desc, *new_shadow_pi_desc;
+	struct list_head *shadow_pi_desc_list = &vcpu->kvm->arch.shadow_pi_desc_list;
+	bool need_free = false;
+	spinlock_t *lock = &vcpu->kvm->arch.shadow_pi_desc_list_lock;
+
+	shadow_pi_desc = search_shadow_pi_desc(vcpu, pi_desc_12);
+	if (shadow_pi_desc)
+		return shadow_pi_desc;
+
+	map = kzalloc(sizeof(struct shadow_pi_desc_map), GFP_KERNEL);
+	if (!map)
+		return NULL;
+
+	new_shadow_pi_desc = kzalloc(sizeof(struct pi_desc), GFP_KERNEL);
+	if (!new_shadow_pi_desc)
+		return NULL;
+
+	spin_lock(lock);
+	shadow_pi_desc = search_shadow_pi_desc(vcpu, pi_desc_12);
+	if (!shadow_pi_desc) {
+		shadow_pi_desc = new_shadow_pi_desc;
+		map->pi_desc_12 = pi_desc_12;
+		map->shadow_pi_desc = new_shadow_pi_desc;
+		list_add_rcu(&map->list, shadow_pi_desc_list);
+	} else
+		need_free = true;
+	spin_unlock(lock);
+
+	if (need_free) {
+		kfree(new_shadow_pi_desc);
+		kfree(map);
+	}
+
+	return shadow_pi_desc;
+}
+
 static void nested_get_vmcs12_pages(struct kvm_vcpu *vcpu,
 					struct vmcs12 *vmcs12)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	struct page *page;
 	u64 hpa;
+	struct pi_desc *shadow_pi_desc;
 
 	if (nested_cpu_has2(vmcs12, SECONDARY_EXEC_VIRTUALIZE_APIC_ACCESSES)) {
 		/*
@@ -10734,6 +10795,8 @@ static void nested_get_vmcs12_pages(struct kvm_vcpu *vcpu,
 			(struct pi_desc *)((void *)vmx->nested.pi_desc +
 			(unsigned long)(vmcs12->posted_intr_desc_addr &
 			(PAGE_SIZE - 1)));
+
+		shadow_pi_desc = get_shadow_pi_desc(vcpu, vmcs12->posted_intr_desc_addr);
 		vmcs_write64(POSTED_INTR_DESC_ADDR,
 			page_to_phys(vmx->nested.pi_desc_page) +
 			(unsigned long)(vmcs12->posted_intr_desc_addr &
@@ -12384,6 +12447,7 @@ static void nested_vmx_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason,
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	struct vmcs12 *vmcs12 = get_vmcs12(vcpu);
+	struct pi_desc *shadow_pi_desc = search_shadow_pi_desc(vcpu, vmcs12->posted_intr_desc_addr);
 
 	/* trying to cancel vmlaunch/vmresume is a bug */
 	WARN_ON_ONCE(vmx->nested.nested_run_pending);
