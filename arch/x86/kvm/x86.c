@@ -6747,6 +6747,11 @@ static void handle_cpu_ir_table(struct kvm_vcpu *vcpu, u64 cpu_irt)
 	if (vcpu->cpu_ir_table && (vcpu->cpu_ir_table != cpu_irt_gpa))
 		free_cpu_ir_table(vcpu);
 
+	if (!cpu_irt_gpa) {
+		trace_printk("invalid table gpa 0\n");
+		return;
+	}
+
 	page = kvm_vcpu_gpa_to_page(vcpu, cpu_irt_gpa);
 	cpu_irt_hva = (u64)kmap(page);
 	cpu_irt_hva += offset_in_page(cpu_irt_gpa);
