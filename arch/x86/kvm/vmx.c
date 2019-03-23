@@ -8956,22 +8956,6 @@ static struct pi_desc *get_pi_desc(struct kvm_vcpu *vcpu, int dest_id,
 		return NULL;
 	}
 
-	if (vcpu->kvm->v_pi_desc[dest_id] != cpu_irte->pi_desc_addr) {
-		pr_err("dest id: %d. GPA hyp: 0x%llx, table: 0x%llx\n",
-		       dest_id, vcpu->kvm->v_pi_desc[dest_id],
-		       cpu_irte->pi_desc_addr);
-		kunmap(page);
-		return NULL;
-	}
-
-	if (vcpu->kvm->v_pi_desc_map[dest_id] != pi_desc_map) {
-		pr_err("map from hyp is 0x%llx, from table 0x%llx\n",
-			vcpu->kvm->v_pi_desc_map[dest_id],
-			pi_desc_map);
-
-		BUG();
-	}
-
 	return (struct pi_desc *)pi_desc_map;
 }
 
