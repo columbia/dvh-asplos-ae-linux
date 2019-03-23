@@ -6271,10 +6271,6 @@ static void vmx_vcpu_setup(struct vcpu_vmx *vmx)
 		/* Set (vcpu, pi_desc) pair in the table */
 		vmx->vcpu.kvm->cpu_ir_table[vmx->vcpu.vcpu_id].pi_desc_addr = __pa(&vmx->pi_desc);
 		vmx->vcpu.kvm->cpu_ir_table[vmx->vcpu.vcpu_id].dest_apic_id = vmx->vcpu.vcpu_id;
-
-		/* Telling hw which pi_desc it needs to access for this target
-		 * vcpu. apic_id for the virtual cpu is vcpu_id in the kvm */
-		kvm_hypercall2(0xe1, vmx->vcpu.vcpu_id, __pa((&vmx->pi_desc)));
 	}
 
 	if (!kvm_pause_in_guest(vmx->vcpu.kvm)) {
@@ -10374,8 +10370,6 @@ static void vmx_free_vcpu(struct kvm_vcpu *vcpu)
 	/* Clear (vcpu, pi_desc) pair in the table */
 	vmx->vcpu.kvm->cpu_ir_table[vmx->vcpu.vcpu_id].dest_apic_id= 0;
 	vmx->vcpu.kvm->cpu_ir_table[vmx->vcpu.vcpu_id].pi_desc_addr = 0;
-	/* Tell hw that we don't run the vcpu anymore */
-	kvm_hypercall2(0xe2, vmx->vcpu.vcpu_id, __pa((&vmx->pi_desc)));
 
 	if (enable_pml)
 		vmx_destroy_pml_buffer(vmx);
