@@ -10056,12 +10056,6 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 sync_exit:
 	vcpu->sync_shadow_pi_desc = false;
 
-	/* We would like to write CPU IRT pointer in VMCS, but not sure if
-	 * anything is available there in the current architecture. We therefore
-	 * pass the pointer to the L0 hypervisor via vmcall for now even though
-	 * it causes one extra trap to L0 for L2 and L3 switching.
-	 */
-	kvm_hypercall1(0xd1, __pa((vmx->vcpu.kvm->cpu_ir_table)));
 
 	/* Record the guest's net vcpu time for enforced NMI injections. */
 	if (unlikely(!enable_vnmi &&
@@ -10479,6 +10473,13 @@ static struct kvm_vcpu *vmx_create_vcpu(struct kvm *kvm, unsigned int id)
 	vmx->pi_desc.nv = POSTED_INTR_VECTOR;
 	vmx->pi_desc.sn = 1;
 
+	/* TODO: wrap this as write_vmcs_xxx() */
+	/* We would like to write CPU IRT pointer in VMCS, but not sure if
+	 * anything is available there in the current architecture. We therefore
+	 * pass the pointer to the L0 hypervisor via vmcall for now even though
+	 * it causes one extra trap to L0 for L2 and L3 switching.
+	 */
+	kvm_hypercall1(0xd1, __pa((vmx->vcpu.kvm->cpu_ir_table)));
 	return &vmx->vcpu;
 
 free_vmcs:
