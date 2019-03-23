@@ -9178,6 +9178,17 @@ static bool nested_vmx_exit_handled_cr(struct kvm_vcpu *vcpu,
 	return false;
 }
 
+static bool nested_vmcall(struct kvm_vcpu *vcpu)
+{
+	unsigned long nr = kvm_register_read(vcpu, VCPU_REGS_RAX);
+
+	if (nr > 0xf000)
+		return false;
+
+	/* by default, true will forward the vmcall to L1 */
+	return true;
+}
+
 /*
  * Return 1 if we should exit from L2 to L1 to handle an exit, or 0 if we
  * should handle it ourselves in L0 (and then continue L2). Only call this
@@ -9262,7 +9273,10 @@ static bool nested_vmx_exit_reflected(struct kvm_vcpu *vcpu, u32 exit_reason)
 		return nested_cpu_has2(vmcs12, SECONDARY_EXEC_RDSEED_EXITING);
 	case EXIT_REASON_RDTSC: case EXIT_REASON_RDTSCP:
 		return nested_cpu_has(vmcs12, CPU_BASED_RDTSC_EXITING);
-	case EXIT_REASON_VMCALL: case EXIT_REASON_VMCLEAR:
+	case EXIT_REASON_VMCALL:
+		return nested_vmcall(vcpu);
+	
+	case EXIT_REASON_VMCLEAR:
 	case EXIT_REASON_VMLAUNCH: case EXIT_REASON_VMPTRLD:
 	case EXIT_REASON_VMPTRST: case EXIT_REASON_VMREAD:
 	case EXIT_REASON_VMRESUME: case EXIT_REASON_VMWRITE:
