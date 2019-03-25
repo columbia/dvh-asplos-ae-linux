@@ -12032,7 +12032,7 @@ static void setup_cpu_ir_table_nested(struct kvm_vcpu *vcpu,
 {
 	int i = 0;
 
-	memset(shadow_table, 0, sizeof(struct cpu_irte) * 10);
+	memset(shadow_table, 0, sizeof(struct cpu_irte) * 4);
 
 	if (!vm_table) {
 		/* VM didnt set cpu ir table yet */
@@ -12152,7 +12152,7 @@ static int nested_vmx_run(struct kvm_vcpu *vcpu, bool launch)
 	 * pass the pointer to the L0 hypervisor via vmcall for now even though
 	 * it causes one extra trap to L0 for L2 and L3 switching.
 	 */
-	kvm_hypercall1(0xd1, __pa((vmx->vcpu.kvm->cpu_ir_table_nested + 6)));
+	kvm_hypercall1(0xd1, __pa((vmx->vcpu.kvm->cpu_ir_table + 6)));
 
 	/*
 	 * If we're entering a halted L2 vcpu and the L2 vcpu won't be woken
