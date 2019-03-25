@@ -12046,7 +12046,7 @@ static void setup_cpu_ir_table_nested(struct kvm_vcpu *vcpu,
 		 * (enter_vmx_non_root_mode() -> nested_get_vmcs12_pages())
 		 */
 		shadow_table[i].pi_desc_addr =
-			(u64)search_shadow_pi_desc(vcpu, vm_table[i].pi_desc_addr);
+			(u64)__pa(search_shadow_pi_desc(vcpu, vm_table[i].pi_desc_addr));
 		i++;
 	}
 }
