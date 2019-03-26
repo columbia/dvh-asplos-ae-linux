@@ -8935,8 +8935,10 @@ static struct pi_desc *get_pi_desc(struct kvm_vcpu *vcpu, int dest_id,
 		return NULL;
 	}
 
-	if (!vcpu->cpu_ir_table)
+	if (!vcpu->cpu_ir_table) {
+		trace_printk("ir table is null\n");
 		return NULL;
+	}
 
 	/* HACK: we know that kvm nested vcpus will have apic_id same as nested
 	 * vcpu_id, but this is not the case for the real hardware. We
@@ -8944,13 +8946,14 @@ static struct pi_desc *get_pi_desc(struct kvm_vcpu *vcpu, int dest_id,
 	 * dest id. 
 	 */
 	cpu_irte = ((struct cpu_irte *)vcpu->cpu_ir_table_map + dest_id);
+	trace_printk("cpu_irte: 0x%llx\n", (u64)cpu_irte);
 
 	page = kvm_vcpu_gpa_to_page(vcpu, cpu_irte->pi_desc_addr);
 	pi_desc_map = (u64)kmap(page);
 	pi_desc_map += offset_in_page(cpu_irte->pi_desc_addr);
 
 	if (dest_id != cpu_irte->dest_apic_id) {
-		pr_err("dest id: %d, dest id in tabl: %d\n",
+		trace_printk("dest id: %d, dest id in tabl: %d\n",
 		       dest_id, cpu_irte->dest_apic_id);
 		kunmap(page);
 		return NULL;
@@ -8979,20 +8982,28 @@ static bool handle_nvm_x2apic_icr(struct kvm_vcpu *src_vcpu)
 	icr_high = src_vcpu->arch.regs[VCPU_REGS_RDX];
 	kvm_apic_get_irq(lapic, icr_low, icr_high, &irq);
 
+	trace_printk("nVM ICR write\n");
 	/* Check delivery mode. Handle single target mode only, not broadcast */
-	if (APIC_DM_FIXED != irq.delivery_mode)
+	if (APIC_DM_FIXED != irq.delivery_mode) {
+		trace_printk("Not fixed mode. Fall back to the default\n");
 		return false;
+	}
 
 	/* If shorthand is set, let L1 handle it for now */
-	if (APIC_DEST_NOSHORT != irq.shorthand)
+	if (APIC_DEST_NOSHORT != irq.shorthand) {
+		trace_printk("shorthand is not 0. Fall back to the default\n");
 		return false;
+	}
 
 	vm_pi_desc = get_pi_desc(src_vcpu, irq.dest_id, page);
+	trace_printk("mapped pi_desc: 0x%llx\n", (u64)vm_pi_desc);
 	/* If the guest hypervisor didn't set pi_desc for the dest yet, then
 	 * just take the default path going back to the guest hyp.
 	 */
-	if (!vm_pi_desc)
+	if (!vm_pi_desc) {
+		trace_printk("Can't find vm_pi_desc\n");
 		return false;
+	}
 
 	/* 1. setup virtual pi_desc */
 	/* This is what the virtual HW always do regardless of L2 running state
@@ -9016,6 +9027,7 @@ static bool handle_nvm_x2apic_icr(struct kvm_vcpu *src_vcpu)
 		kunmap(page);
 
 	to_vmx(src_vcpu)->nvm_emulation_done = 1;
+	trace_printk("nVM ICR write is handled in L0 successfully\n");
 	return true;
 }
 
