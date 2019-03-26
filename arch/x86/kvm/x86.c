@@ -6723,16 +6723,12 @@ static void handle_cpu_ir_table(struct kvm_vcpu *vcpu, u64 cpu_irt)
 	cpu_irt_hva = (u64)kmap(page);
 	cpu_irt_hva += offset_in_page(cpu_irt_gpa);
 
-	trace_printk("L1 cpu %d set CPU IR table. GPA: 0x%llx\n",
-		     vcpu->vcpu_id, (u64) cpu_irt_gpa);
+	trace_printk("L1 cpu %d set CPU IR table. GPA: 0x%llx hva: 0x%llx\n",
+		     vcpu->vcpu_id, (u64) cpu_irt_gpa, cpu_irt_hva);
 
 	vcpu->cpu_ir_table = cpu_irt_gpa;
 	vcpu->cpu_ir_table_map = cpu_irt_hva;
 	vcpu->cpu_ir_table_page = page;
-}
-
-static void refresh_cpu_ir_table(struct kvm_vcpu *vcpu, u64 cpu_irt)
-{
 }
 
 int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
@@ -6785,11 +6781,12 @@ int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 		handle_cpu_ir_table(vcpu, a0);
 		ret = 0;
 		break;
-	case KVM_HC_CPU_IR_TABLE_REFRESH:
+	case KVM_HC_CPU_IR_SHADOW_TABLE:
 		/* The table pointer in L1 GPA will be used to handle L2 (or Ln)
 		 * IPI
 		 */
-		refresh_cpu_ir_table(vcpu, a0);
+		trace_printk("L1 sets shadow ir table\n");
+		handle_cpu_ir_table(vcpu, a0);
 		ret = 0;
 		break;
 	default:

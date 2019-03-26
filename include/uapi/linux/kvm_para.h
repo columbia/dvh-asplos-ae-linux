@@ -29,7 +29,7 @@
 #define KVM_HC_VCPU_PI_DESC		0xe1
 #define KVM_HC_VCPU_PI_DESC_FREE	0xe2
 #define KVM_HC_CPU_IR_TABLE		0xd1
-#define KVM_HC_CPU_IR_TABLE_REFRESH	0xd2
+#define KVM_HC_CPU_IR_SHADOW_TABLE	0xd2
 
 /*
  * hypercalls use architecture specific
