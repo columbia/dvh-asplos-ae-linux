@@ -6221,6 +6221,13 @@ static void ept_set_mmio_spte_mask(void)
 				   VMX_EPT_MISCONFIG_WX_VALUE);
 }
 
+static void setup_cpu_ir_entry(struct cpu_irte *irte, u32 dest_apic_id,
+			       struct pi_desc *pi_desc_addr_va)
+{
+	irte->pi_desc_addr = __pa(pi_desc_addr_va);
+	irte->dest_apic_id = dest_apic_id;
+}
+
 #define VMX_XSS_EXIT_BITMAP 0
 /*
  * Sets up the vmcs for emulated real mode.
@@ -6270,9 +6277,8 @@ static void vmx_vcpu_setup(struct vcpu_vmx *vmx)
 		vmcs_write16(POSTED_INTR_NV, POSTED_INTR_VECTOR);
 		vmcs_write64(POSTED_INTR_DESC_ADDR, __pa((&vmx->pi_desc)));
 
-		/* Set (vcpu, pi_desc) pair in the table */
-		vmx->vcpu.kvm->cpu_ir_table[vmx->vcpu.vcpu_id].pi_desc_addr = __pa(&vmx->pi_desc);
-		vmx->vcpu.kvm->cpu_ir_table[vmx->vcpu.vcpu_id].dest_apic_id = vmx->vcpu.vcpu_id;
+		setup_cpu_ir_entry(&vmx->vcpu.kvm->cpu_ir_table[vmx->vcpu.vcpu_id],
+				   vmx->vcpu.vcpu_id, &vmx->pi_desc);
 	}
 
 	if (!kvm_pause_in_guest(vmx->vcpu.kvm)) {
@@ -12031,6 +12037,7 @@ static void setup_cpu_ir_table_nested(struct kvm_vcpu *vcpu,
 				      struct cpu_irte *shadow_table)
 {
 	int i = 0;
+	struct pi_desc *shadow_pi_desc;
 
 	memset(shadow_table, 0, sizeof(struct cpu_irte) * 4);
 
@@ -12040,13 +12047,12 @@ static void setup_cpu_ir_table_nested(struct kvm_vcpu *vcpu,
 	}
 
 	while ((i == vm_table[i].dest_apic_id) && vm_table[i].pi_desc_addr) {
-		shadow_table[i].dest_apic_id = vm_table[i].dest_apic_id;
 
-		/* Note that shadow_pi_descs are already set before in
-		 * (enter_vmx_non_root_mode() -> nested_get_vmcs12_pages())
-		 */
-		shadow_table[i].pi_desc_addr =
-			(u64)__pa(search_shadow_pi_desc(vcpu, vm_table[i].pi_desc_addr));
+		shadow_pi_desc =
+			search_shadow_pi_desc(vcpu, vm_table[i].pi_desc_addr);
+
+		setup_cpu_ir_entry(&shadow_table[i], vm_table[i].dest_apic_id,
+				   shadow_pi_desc);
 		i++;
 	}
 }
