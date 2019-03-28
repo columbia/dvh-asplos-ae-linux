@@ -8924,14 +8924,20 @@ static bool update_virtual_pi_desc(struct pi_desc *v_pi_desc, int vector)
 	return true;
 }
 
-static struct pi_desc *get_pi_desc(struct kvm_vcpu *vcpu, int dest_id,
+static struct pi_desc *get_pi_desc(struct kvm_vcpu *vcpu, int dest_id, int dest_mode,
 				   struct page *page)
 {
 	struct cpu_irte *cpu_irte;
 	u64 pi_desc_map;
+	int idx;
 
-	if (dest_id > 20) {
-		pr_err("dest_id is %d, bigger than the limit (20).\n", dest_id);
+	if (dest_mode == APIC_DEST_LOGICAL)
+		idx = ffs(dest_id);
+	else
+		idx = dest_id;
+
+	if (idx > 20) {
+		pr_err("idx is %d, bigger than the limit (20).\n", idx);
 		return NULL;
 	}
 
@@ -8945,16 +8951,16 @@ static struct pi_desc *get_pi_desc(struct kvm_vcpu *vcpu, int dest_id,
 	 * eventually need to use hash map or something to cover the whole 32bit
 	 * dest id. 
 	 */
-	cpu_irte = ((struct cpu_irte *)vcpu->cpu_ir_table_map + dest_id);
+	cpu_irte = ((struct cpu_irte *)vcpu->cpu_ir_table_map + idx);
 	trace_printk("cpu_irte: 0x%llx\n", (u64)cpu_irte);
 
 	page = kvm_vcpu_gpa_to_page(vcpu, cpu_irte->pi_desc_addr);
 	pi_desc_map = (u64)kmap(page);
 	pi_desc_map += offset_in_page(cpu_irte->pi_desc_addr);
 
-	if (dest_id != cpu_irte->dest_apic_id) {
-		trace_printk("dest id: %d, dest id in tabl: %d\n",
-		       dest_id, cpu_irte->dest_apic_id);
+	if (idx != cpu_irte->dest_apic_id) {
+		trace_printk("converted dest id: %d, dest id in tabl: %d\n",
+		       idx, cpu_irte->dest_apic_id);
 		kunmap(page);
 		return NULL;
 	}
@@ -8995,7 +9001,7 @@ static bool handle_nvm_x2apic_icr(struct kvm_vcpu *src_vcpu)
 		return false;
 	}
 
-	vm_pi_desc = get_pi_desc(src_vcpu, irq.dest_id, page);
+	vm_pi_desc = get_pi_desc(src_vcpu, irq.dest_id, irq.dest_mode, page);
 	trace_printk("mapped pi_desc: 0x%llx\n", (u64)vm_pi_desc);
 	/* If the guest hypervisor didn't set pi_desc for the dest yet, then
 	 * just take the default path going back to the guest hyp.
