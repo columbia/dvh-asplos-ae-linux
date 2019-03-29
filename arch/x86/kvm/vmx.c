@@ -8931,9 +8931,12 @@ static struct pi_desc *get_pi_desc(struct kvm_vcpu *vcpu, int dest_id, int dest_
 	u64 pi_desc_map;
 	int idx;
 
-	if (dest_mode == APIC_DEST_LOGICAL)
-		idx = ffs(dest_id);
-	else
+	if (dest_mode == APIC_DEST_LOGICAL) {
+		/* Fall to the default path for multiple dests */
+		if (ffs(dest_id) != fls(dest_id))
+			return NULL;
+		idx = ffs(dest_id) - 1;
+	} else
 		idx = dest_id;
 
 	if (idx > 20) {
