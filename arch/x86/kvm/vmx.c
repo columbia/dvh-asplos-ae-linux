@@ -12039,7 +12039,16 @@ static void setup_cpu_ir_table_nested(struct kvm_vcpu *vcpu,
 	int i = 0;
 	struct pi_desc *shadow_pi_desc;
 
-	memset(shadow_table, 0, sizeof(struct cpu_irte) * 4);
+	/* There is an inherent problem of shadow table contents.
+	 * Any hardware that has the shadow table pointer can access it while
+	 * the contents can be changed depends on the nVM cpu IR table.
+	 * We would not have any problem (lol) for now since we are not really
+	 * doing recursive use of the IPI PI hardware. But when it comes to run
+	 * L4, then we might break things.
+	 * TODO: is this the design problem or can be resolved in the
+	 * impementation?
+	 */
+	//memset(shadow_table, 0, sizeof(struct cpu_irte) * 4);
 
 	if (!vm_table) {
 		/* VM didnt set cpu ir table yet */
