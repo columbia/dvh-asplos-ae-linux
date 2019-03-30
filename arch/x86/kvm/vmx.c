@@ -12075,6 +12075,8 @@ static int nested_vmx_run(struct kvm_vcpu *vcpu, bool launch)
 		return ret;
 	}
 
+	trace_kvm_nested_vmrun(0, 0, 0, 0, 0, 0);
+
 	/*
 	 * If we're entering a halted L2 vcpu and the L2 vcpu won't be woken
 	 * by event injection, halt vcpu.
