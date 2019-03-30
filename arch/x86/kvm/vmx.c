@@ -7518,6 +7518,8 @@ static void nested_wakeup_handler(void)
 	int cpu = smp_processor_id();
 	struct kvm_vcpu *vcpu = per_cpu(curr_vcpu, cpu);
 
+	vcpu->sync_shadow_pi_desc = true;
+
 	/*FIXME: we eventually need to read nv from the pi_desc12,
 	 * but this kernel thread can't access the guest page.
 	 * Either map the page always or set it up in the destination vcpu */
@@ -10010,13 +10012,41 @@ static void vmx_arm_hv_timer(struct kvm_vcpu *vcpu)
 	vmcs_write32(VMX_PREEMPTION_TIMER_VALUE, delta_tsc);
 }
 
+static struct pi_desc *search_shadow_pi_desc(struct kvm_vcpu *vcpu, u64 pi_desc_12);
+static void move_pir_on(struct pi_desc *dst, struct pi_desc *src);
 static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	unsigned long cr3, cr4, evmcs_rsp;
+	struct page *page;
+	struct vmcs12 *vmcs12 = get_vmcs12(vcpu);
+	struct pi_desc *n_pi_desc, *shadow_pi_desc;
 
 	/* This is to get a vcpu in the handle nested_wakeup vector */
 	per_cpu(curr_vcpu, vcpu->cpu) = vcpu;
+
+	/* FIXME: shouldn't we always sync? 
+	 * or at least when any PIR is set in the shadow?
+	 */
+	if (vcpu->sync_shadow_pi_desc) {
+		shadow_pi_desc = search_shadow_pi_desc(vcpu, vmcs12->posted_intr_desc_addr);
+		if (!shadow_pi_desc)
+			BUG();
+
+		page = kvm_vcpu_gpa_to_page(vcpu, vmcs12->posted_intr_desc_addr);
+		if (is_error_page(page))
+			goto sync_exit;
+
+		n_pi_desc = kmap(page);
+		n_pi_desc =
+			(struct pi_desc *)((void *)n_pi_desc +
+			(unsigned long)(vmcs12->posted_intr_desc_addr &
+			(PAGE_SIZE - 1)));
+		move_pir_on(n_pi_desc, shadow_pi_desc);
+		kunmap(page);
+	}
+sync_exit:
+	vcpu->sync_shadow_pi_desc = false;
 
 	/* Record the guest's net vcpu time for enforced NMI injections. */
 	if (unlikely(!enable_vnmi &&
