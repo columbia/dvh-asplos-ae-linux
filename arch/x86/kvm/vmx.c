@@ -1122,6 +1122,13 @@ static DEFINE_PER_CPU(struct list_head, loaded_vmcss_on_cpu);
 static DEFINE_PER_CPU(struct list_head, blocked_vcpu_on_cpu);
 static DEFINE_PER_CPU(spinlock_t, blocked_vcpu_on_cpu_lock);
 
+/* 
+ * We ideally maintain a per-CPU linked-list of vCPU, so in nested_wakeup_handler() we
+ * can find which nested vCPU should be waken up.
+ * For now, we just keep once vcpu since vcpus are mapped to phys cpus 1:1
+ */
+static DEFINE_PER_CPU(struct kvm_vcpu *, curr_vcpu);
+
 enum {
 	VMX_VMREAD_BITMAP,
 	VMX_VMWRITE_BITMAP,
@@ -7503,6 +7510,20 @@ static void wakeup_handler(void)
 	spin_unlock(&per_cpu(blocked_vcpu_on_cpu_lock, cpu));
 }
 
+/*
+ * Handler for NESTED_POSTED_INTERRUPT_WAKEUP_VECTOR.
+ */
+static void nested_wakeup_handler(void)
+{
+	int cpu = smp_processor_id();
+	struct kvm_vcpu *vcpu = per_cpu(curr_vcpu, cpu);
+
+	/*FIXME: we eventually need to read nv from the pi_desc12,
+	 * but this kernel thread can't access the guest page.
+	 * Either map the page always or set it up in the destination vcpu */
+	vmx_deliver_posted_interrupt(vcpu, 0xf1);
+}
+
 static void vmx_enable_tdp(void)
 {
 	kvm_mmu_set_mask_ptes(VMX_EPT_READABLE_MASK,
@@ -7635,6 +7656,7 @@ static __init int hardware_setup(void)
 		init_vmcs_shadow_fields();
 
 	kvm_set_posted_intr_wakeup_handler(wakeup_handler);
+	kvm_set_nested_posted_intr_wakeup_handler(nested_wakeup_handler);
 	nested_vmx_setup_ctls_msrs(&vmcs_config.nested, enable_apicv);
 
 	kvm_mce_cap_supported |= MCG_LMCE_P;
@@ -9992,6 +10014,9 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	unsigned long cr3, cr4, evmcs_rsp;
+
+	/* This is to get a vcpu in the handle nested_wakeup vector */
+	per_cpu(curr_vcpu, vcpu->cpu) = vcpu;
 
 	/* Record the guest's net vcpu time for enforced NMI injections. */
 	if (unlikely(!enable_vnmi &&
