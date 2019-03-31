@@ -13242,7 +13242,8 @@ static int vmx_update_pi_irte(struct kvm *kvm, unsigned int host_irq,
 			vcpu_info.pi_desc_addr = __pa(vcpu_to_pi_desc(vcpu));
 		} else {
 			/* nested PI case -- no VP */
-			vcpu_info.pi_desc_addr = __pa(e->pi_desc_host);
+			vcpu_info.pi_desc_addr = 
+				__pa(search_shadow_pi_desc(vcpu, e->pi_desc_addr));
 		}
 
 		trace_kvm_pi_irte_update(host_irq, vcpu->vcpu_id, e->gsi,
