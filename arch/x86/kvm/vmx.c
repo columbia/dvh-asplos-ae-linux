@@ -9714,6 +9714,7 @@ static int vmx_handle_exit(struct kvm_vcpu *vcpu)
 					vmcs_read32(VM_EXIT_INTR_ERROR_CODE),
 					KVM_ISA_VMX);
 
+		++vcpu->stat.nvm_exits;
 		return nested_vmx_reflect_vmexit(vcpu, exit_reason);
 	}
 
