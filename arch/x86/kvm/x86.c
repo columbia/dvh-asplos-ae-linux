@@ -263,6 +263,7 @@ struct kvm_stats_debugfs_item debugfs_entries[] = {
 	{ "exits_PML_FULL", VCPU_STAT(exit_handler[EXIT_REASON_PML_FULL]) },
 	{ "exits_XSAVES", VCPU_STAT(exit_handler[EXIT_REASON_XSAVES]) },
 	{ "exits_XRSTORS", VCPU_STAT(exit_handler[EXIT_REASON_XRSTORS]) },
+	{ "exits_NVM", VCPU_STAT(nvm_exits) },
 	{ NULL }
 };
 

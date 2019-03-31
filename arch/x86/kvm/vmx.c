@@ -9474,8 +9474,10 @@ static int vmx_handle_exit(struct kvm_vcpu *vcpu)
 	if (vmx->emulation_required)
 		return handle_invalid_guest_state(vcpu);
 
-	if (is_guest_mode(vcpu) && nested_vmx_exit_reflected(vcpu, exit_reason))
+	if (is_guest_mode(vcpu) && nested_vmx_exit_reflected(vcpu, exit_reason)) {
+		++vcpu->stat.nvm_exits;
 		return nested_vmx_reflect_vmexit(vcpu, exit_reason);
+	}
 
 	if (exit_reason & VMX_EXIT_REASONS_FAILED_VMENTRY) {
 		dump_vmcs();
