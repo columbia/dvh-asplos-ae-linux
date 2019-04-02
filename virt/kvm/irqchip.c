@@ -60,7 +60,7 @@ int kvm_irq_map_chip_pin(struct kvm *kvm, unsigned irqchip, unsigned pin)
 
 int kvm_send_userspace_msi(struct kvm *kvm, struct kvm_msi *msi)
 {
-	struct kvm_kernel_irq_routing_entry route;
+	struct kvm_kernel_irq_routing_entry route = {};
 
 	if (!irqchip_in_kernel(kvm) || (msi->flags & ~KVM_MSI_VALID_DEVID))
 		return -EINVAL;
@@ -156,6 +156,7 @@ static int setup_routing_entry(struct kvm *kvm,
 			return -EINVAL;
 
 	e->gsi = ue->gsi;
+	e->pi_desc_addr = ue->pi_desc_addr;
 	e->type = ue->type;
 	r = kvm_set_routing_entry(kvm, e, ue);
 	if (r)
