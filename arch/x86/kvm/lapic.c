@@ -1494,6 +1494,8 @@ static void __start_sw_tscdeadline(struct kvm_lapic *apic, struct kvm_timer *kti
 		expire = ktime_sub_ns(expire, lapic_timer_advance_ns);
 		hrtimer_start(&ktimer->timer,
 				expire, HRTIMER_MODE_ABS_PINNED);
+		if (vtimer)
+			trace_kvm_set_nvm_vtimer(vcpu->vcpu_id, expire);
 	} else {
 		if (!vtimer)
 			apic_timer_expired(apic);

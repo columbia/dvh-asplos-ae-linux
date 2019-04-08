@@ -1387,6 +1387,22 @@ TRACE_EVENT(kvm_start_nvm_preemption_timer,
 			__entry->val_12)
 );
 
+TRACE_EVENT(kvm_set_nvm_vtimer,
+		TP_PROTO(unsigned int vcpu_id, u64 val),
+		TP_ARGS(vcpu_id, val),
+		TP_STRUCT__entry(
+			__field(unsigned int, vcpu_id)
+			__field(u64, val)
+			),
+		TP_fast_assign(
+			__entry->vcpu_id = vcpu_id;
+			__entry->val = val;
+			),
+		TP_printk("vcpu_id %d opt nvm timeout 0x%llx\n",
+			__entry->vcpu_id,
+			__entry->val)
+);
+
 /*
  * Tracepoint for kvm_hv_flush_tlb.
  */
@@ -1437,6 +1453,7 @@ TRACE_EVENT(kvm_hv_flush_tlb_ex,
 		  __entry->valid_bank_mask, __entry->format,
 		  __entry->address_space, __entry->flags)
 );
+
 #endif /* _TRACE_KVM_H */
 
 #undef TRACE_INCLUDE_PATH
