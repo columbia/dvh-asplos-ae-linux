@@ -10971,6 +10971,7 @@ static void nested_get_vmcs12_pages(struct kvm_vcpu *vcpu,
 static void vmx_start_preemption_timer(struct kvm_vcpu *vcpu)
 {
 	u64 preemption_timeout = get_vmcs12(vcpu)->vmx_preemption_timer_value;
+	u64 preemption_timeout_12 = preemption_timeout;
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 
 	if (vcpu->arch.virtual_tsc_khz == 0)
@@ -10988,6 +10989,9 @@ static void vmx_start_preemption_timer(struct kvm_vcpu *vcpu)
 	do_div(preemption_timeout, vcpu->arch.virtual_tsc_khz);
 	hrtimer_start(&vmx->nested.preemption_timer,
 		      ns_to_ktime(preemption_timeout), HRTIMER_MODE_REL);
+
+	trace_kvm_start_nvm_preemption_timer(vcpu->vcpu_id, preemption_timeout,
+					     preemption_timeout_12);
 }
 
 static int nested_vmx_check_io_bitmap_controls(struct kvm_vcpu *vcpu,

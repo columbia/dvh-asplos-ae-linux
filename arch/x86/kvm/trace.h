@@ -1368,6 +1368,25 @@ TRACE_EVENT(kvm_hv_timer_state,
 			__entry->hv_timer_in_use)
 );
 
+TRACE_EVENT(kvm_start_nvm_preemption_timer,
+		TP_PROTO(unsigned int vcpu_id, u64 val, u64 val_12),
+		TP_ARGS(vcpu_id, val, val_12),
+		TP_STRUCT__entry(
+			__field(unsigned int, vcpu_id)
+			__field(u64, val)
+			__field(u64, val_12)
+			),
+		TP_fast_assign(
+			__entry->vcpu_id = vcpu_id;
+			__entry->val = val;
+			__entry->val_12 = val_12;
+			),
+		TP_printk("vcpu_id %d nvm timeout 0x%llx, in vmcs12: 0x%llx\n",
+			__entry->vcpu_id,
+			__entry->val,
+			__entry->val_12)
+);
+
 /*
  * Tracepoint for kvm_hv_flush_tlb.
  */
