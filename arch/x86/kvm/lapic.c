@@ -1364,11 +1364,10 @@ static void apic_update_lvtt(struct kvm_lapic *apic)
 	}
 }
 
-static void apic_timer_expired(struct kvm_lapic *apic)
+static void __apic_timer_expired(struct kvm_lapic *apic, struct kvm_timer *ktimer)
 {
 	struct kvm_vcpu *vcpu = apic->vcpu;
 	struct swait_queue_head *q = &vcpu->wq;
-	struct kvm_timer *ktimer = &apic->lapic_timer;
 
 	if (atomic_read(&apic->lapic_timer.pending))
 		return;
@@ -1387,14 +1386,20 @@ static void apic_timer_expired(struct kvm_lapic *apic)
 		ktimer->expired_tscdeadline = ktimer->tscdeadline;
 }
 
+static void apic_timer_expired(struct kvm_lapic *apic)
+{
+	__apic_timer_expired(apic, &apic->lapic_timer);
+}
+
 static void kvm_lapic_timer_expired(struct kvm_vcpu *vcpu)
 {
+	struct kvm_lapic *apic = vcpu->arch.apic;
 	/* We are running vtimer only for the current (nested) VM */
 	/* Note that we are not in the vcpu thread here, but in interrupt context
 	 */
 
 	if (is_guest_mode(vcpu)) {
-		;
+		__apic_timer_expired(apic, &apic->lapic_vtimer);
 	} else {
 		apic_timer_expired(vcpu->arch.apic);
 	}
@@ -2168,6 +2173,7 @@ void kvm_lapic_reset(struct kvm_vcpu *vcpu, bool init_event)
 	apic->highest_isr_cache = -1;
 	update_divide_count(apic);
 	atomic_set(&apic->lapic_timer.pending, 0);
+	atomic_set(&apic->lapic_vtimer.pending, 0);
 	if (kvm_vcpu_is_bsp(vcpu))
 		kvm_lapic_set_base(vcpu,
 				vcpu->arch.apic_base | MSR_IA32_APICBASE_BSP);
