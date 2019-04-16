@@ -12392,8 +12392,8 @@ static u64 read_msr_vTSCDEADLINE(struct kvm_vcpu *vcpu)
 	u32 low, high;
 
 	/* read from the virtual tsc register */
-	rdmsrl(0x85f, low);
-	rdmsrl(0x860, high);
+	rdmsrl(X2_APIC_V_TSC_DEADLINE, low);
+	rdmsrl(X2_APIC_V_TSC_DEADLINE2, high);
 
 	return (((u64)high) << 32) | low;
 }
