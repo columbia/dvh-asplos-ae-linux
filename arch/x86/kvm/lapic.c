@@ -2209,22 +2209,36 @@ static bool lapic_is_periodic(struct kvm_lapic *apic)
 int apic_has_pending_timer(struct kvm_vcpu *vcpu)
 {
 	struct kvm_lapic *apic = vcpu->arch.apic;
+	bool pending = false;
 
-	if (apic_enabled(apic) && apic_lvt_enabled(apic, APIC_LVTT))
-		return atomic_read(&apic->lapic_timer.pending);
+	if (apic_enabled(apic) && apic_lvt_enabled(apic, APIC_LVTT)) {
+		pending |= atomic_read(&apic->lapic_timer.pending);
+		pending |= atomic_read(&apic->lapic_vtimer.pending);
+	}
 
-	return 0;
+	return pending;
 }
 
+#define	APIC_LVTVT	0x321
 int kvm_apic_local_deliver(struct kvm_lapic *apic, int lvt_type)
 {
 	u32 reg = kvm_lapic_get_reg(apic, lvt_type);
 	int vector, mode, trig_mode;
 
+	/* There's no such thing as LVTVT for now */
+	if (lvt_type != APIC_LVTVT)
+		reg = kvm_lapic_get_reg(apic, lvt_type);
+
 	if (kvm_apic_hw_enabled(apic) && !(reg & APIC_LVT_MASKED)) {
 		vector = reg & APIC_VECTOR_MASK;
 		mode = reg & APIC_MODE_MASK;
 		trig_mode = reg & APIC_LVT_LEVEL_TRIGGER;
+
+		if (lvt_type == APIC_LVTVT) {
+			vector = 0xeb;
+			mode = 0;
+			trig_mode = 0;
+		}
 		return __apic_accept_irq(apic, mode, vector, 1, trig_mode,
 					NULL);
 	}
@@ -2344,6 +2358,11 @@ void kvm_inject_apic_timer_irqs(struct kvm_vcpu *vcpu)
 			apic->lapic_timer.target_expiration = 0;
 		}
 		atomic_set(&apic->lapic_timer.pending, 0);
+	}
+
+	if (atomic_read(&apic->lapic_vtimer.pending) > 0) {
+		kvm_apic_local_deliver(apic, APIC_LVTVT);
+		atomic_set(&apic->lapic_vtimer.pending, 0);
 	}
 }
 
