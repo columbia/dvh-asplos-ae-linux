@@ -9732,7 +9732,7 @@ static void vmx_apicv_post_state_restore(struct kvm_vcpu *vcpu)
 	memset(vmx->pi_desc.pir, 0, sizeof(vmx->pi_desc.pir));
 }
 
-static void vmx_sync_tsc_deadline(struct vcpu_vmx *vmx);
+static void vmx_sync_vtsc_deadline(struct vcpu_vmx *vmx);
 static void vmx_complete_atomic_exit(struct vcpu_vmx *vmx)
 {
 	u32 exit_intr_info = 0;
@@ -10254,7 +10254,7 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 	vmx->loaded_vmcs->launched = 1;
 	vmx->idt_vectoring_info = vmcs_read32(IDT_VECTORING_INFO_FIELD);
 
-	vmx_sync_tsc_deadline(vmx);
+	vmx_sync_vtsc_deadline(vmx);
 	vmx_complete_atomic_exit(vmx);
 	vmx_recover_nmi_blocking(vmx);
 	vmx_complete_interrupts(vmx);
@@ -12713,7 +12713,7 @@ static void vmx_cancel_virt_timer(struct kvm_vcpu *vcpu)
 }
 #endif
 
-static void vmx_sync_tsc_deadline(struct vcpu_vmx *vmx)
+static void vmx_sync_vtsc_deadline(struct vcpu_vmx *vmx)
 {
 	struct kvm_vcpu *vcpu = &vmx->vcpu;
 	struct kvm_lapic *apic = vcpu->arch.apic;
