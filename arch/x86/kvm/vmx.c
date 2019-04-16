@@ -12398,6 +12398,12 @@ static u64 read_msr_vTSCDEADLINE(struct kvm_vcpu *vcpu)
 	return (((u64)high) << 32) | low;
 }
 
+static void save_vtsc_deadline(struct kvm_vcpu *vcpu)
+{
+	/* we save vTSC_DEADLINE MSR that nVM possibly set via hw support */
+	vcpu->arch.apic->lapic_timer.vtscdeadline = read_msr_vTSCDEADLINE(vcpu);
+}
+
 /*
  * Emulate an exit from nested guest (L2) to L1, i.e., prepare to run L1
  * and modify vmcs12 to make it see what it would expect to see there if
@@ -12425,6 +12431,8 @@ static void nested_vmx_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason,
 
 	if (vmcs12->cpu_based_vm_exec_control & CPU_BASED_USE_TSC_OFFSETING)
 		vcpu->arch.tsc_offset -= vmcs12->tsc_offset;
+
+	save_vtsc_deadline(vcpu);
 
 	if (likely(!vmx->fail)) {
 		if (exit_reason == -1)

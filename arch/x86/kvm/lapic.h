@@ -35,6 +35,7 @@ struct kvm_timer {
 	u32 timer_mode;
 	u32 timer_mode_mask;
 	u64 tscdeadline;
+	u64 vtscdeadline;
 	u64 expired_tscdeadline;
 	atomic_t pending;			/* accumulated triggered timers */
 	bool hw_timer_in_use[HW_TIMER_MAX];	/* 0: hv timer
