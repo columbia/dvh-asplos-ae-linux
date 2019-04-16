@@ -12400,8 +12400,17 @@ static u64 read_msr_vTSCDEADLINE(struct kvm_vcpu *vcpu)
 
 static void save_vtsc_deadline(struct kvm_vcpu *vcpu)
 {
-	/* we save vTSC_DEADLINE MSR that nVM possibly set via hw support */
-	vcpu->arch.apic->lapic_timer.vtscdeadline = read_msr_vTSCDEADLINE(vcpu);
+	struct kvm_lapic *apic = vcpu->arch.apic;
+	u32 low, high;
+
+	rdmsrl(X2_APIC_V_TSC_DEADLINE, low);
+	rdmsrl(X2_APIC_V_TSC_DEADLINE2, high);
+
+	kvm_lapic_set_reg(apic, APIC_V_TSC_DEADLINE, low);
+	kvm_lapic_set_reg(apic, APIC_V_TSC_DEADLINE2, high);
+
+	trace_printk("On returning from nVM, we keep the vTSC_DEADLINE"
+		     " in apic page. low: 0x%x, high: 0x%x\n", low, high);
 }
 
 /*
