@@ -12717,21 +12717,20 @@ static void vmx_sync_tsc_deadline(struct vcpu_vmx *vmx)
 {
 	struct kvm_vcpu *vcpu = &vmx->vcpu;
 	struct kvm_lapic *apic = vcpu->arch.apic;
-	struct kvm_timer *ktimer = &apic->lapic_timer;
+	struct kvm_timer *ktimer;
 	u64 tsc_deadline;
 
 	if (!timer_opt_enable)
 		return;
 
-	tsc_deadline = read_msr_vTSCDEADLINE(vcpu);
+	if (is_guest_mode(vcpu))
+		ktimer = &apic->lapic_vtimer;
+	else
+		ktimer = &apic->lapic_timer;
 
-	if (apic->lapic_timer.tscdeadline != tsc_deadline) {
-		apic->lapic_timer.tscdeadline = tsc_deadline;
-	}
-
-	if (tsc_deadline) {
+	ktimer->tscdeadline = read_msr_vTSCDEADLINE(vcpu);
+	if (ktimer->tscdeadline)
 		ktimer->hw_timer_in_use[VIRT_TIMER] = true;
-	}
 }
 
 static void vmx_sched_in(struct kvm_vcpu *vcpu, int cpu)
