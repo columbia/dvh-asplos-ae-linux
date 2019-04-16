@@ -12387,6 +12387,17 @@ static void load_vmcs12_host_state(struct kvm_vcpu *vcpu,
 		nested_vmx_abort(vcpu, VMX_ABORT_LOAD_HOST_MSR_FAIL);
 }
 
+static u64 read_msr_vTSCDEADLINE(struct kvm_vcpu *vcpu)
+{
+	u32 low, high;
+
+	/* read from the virtual tsc register */
+	rdmsrl(0x85f, low);
+	rdmsrl(0x860, high);
+
+	return (((u64)high) << 32) | low;
+}
+
 /*
  * Emulate an exit from nested guest (L2) to L1, i.e., prepare to run L1
  * and modify vmcs12 to make it see what it would expect to see there if
@@ -12689,21 +12700,11 @@ static void vmx_sync_tsc_deadline(struct vcpu_vmx *vmx)
 	struct kvm_lapic *apic = vcpu->arch.apic;
 	struct kvm_timer *ktimer = &apic->lapic_timer;
 	u64 tsc_deadline;
-	u64 tmp_tsc_deadline;
-	u32 low;
-	u32 high;
 
 	if (!timer_opt_enable)
 		return;
 
-	/* read from the virtual tsc register */
-	rdmsrl(0x85f, tsc_deadline);
-	low = tsc_deadline;
-
-	rdmsrl(0x860, tmp_tsc_deadline);
-	high = tmp_tsc_deadline;
-
-	tsc_deadline =  (((u64)high) << 32) | low;
+	tsc_deadline = read_msr_vTSCDEADLINE(vcpu);
 
 	if (apic->lapic_timer.tscdeadline != tsc_deadline) {
 		apic->lapic_timer.tscdeadline = tsc_deadline;
