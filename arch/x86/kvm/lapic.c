@@ -1387,9 +1387,17 @@ static void apic_timer_expired(struct kvm_lapic *apic)
 		ktimer->expired_tscdeadline = ktimer->tscdeadline;
 }
 
-void kvm_lapic_timer_expired(struct kvm_vcpu *vcpu)
+static void kvm_lapic_timer_expired(struct kvm_vcpu *vcpu)
 {
-	apic_timer_expired(vcpu->arch.apic);
+	/* We are running vtimer only for the current (nested) VM */
+	/* Note that we are not in the vcpu thread here, but in interrupt context
+	 */
+
+	if (is_guest_mode(vcpu)) {
+		;
+	} else {
+		apic_timer_expired(vcpu->arch.apic);
+	}
 }
 
 /*
