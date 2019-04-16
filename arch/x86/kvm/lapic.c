@@ -1369,10 +1369,10 @@ static void __apic_timer_expired(struct kvm_lapic *apic, struct kvm_timer *ktime
 	struct kvm_vcpu *vcpu = apic->vcpu;
 	struct swait_queue_head *q = &vcpu->wq;
 
-	if (atomic_read(&apic->lapic_timer.pending))
+	if (atomic_read(&ktimer->pending))
 		return;
 
-	atomic_inc(&apic->lapic_timer.pending);
+	atomic_inc(&ktimer->pending);
 	kvm_set_pending_timer(vcpu);
 
 	/*
