@@ -1400,6 +1400,7 @@ static void kvm_lapic_timer_expired(struct kvm_vcpu *vcpu)
 
 	if (is_guest_mode(vcpu)) {
 		__apic_timer_expired(apic, &apic->lapic_vtimer);
+		kvm_hypercall0(0x1010);
 	} else {
 		apic_timer_expired(vcpu->arch.apic);
 	}
@@ -2743,6 +2744,7 @@ void kvm_lapic_vtimer_interrupt(void)
 	 * since vtimer is off on the expiration.
 	 * So call the function below instead of calling kvm_lapic_expired_virt_timer
 	 */
+	kvm_hypercall0(0x1000);
 	kvm_lapic_timer_expired(vcpu);
 	trace_printk("vtimer irq for vcpu %d\n", vcpu? vcpu->vcpu_id : 77);
 }
