@@ -1497,8 +1497,10 @@ static void __start_sw_tscdeadline(struct kvm_lapic *apic, struct kvm_timer *kti
 	} else {
 		if (!vtimer)
 			apic_timer_expired(apic);
-		else
+		else {
+			trace_printk("vtimer is expired already on programming\n");
 			apic_vtimer_expired(apic);
+		}
 	}
 
 	local_irq_restore(flags);

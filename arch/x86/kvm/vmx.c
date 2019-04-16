@@ -9069,6 +9069,7 @@ static bool handle_nvm_tsc_deadline(struct kvm_vcpu *vcpu)
 	kvm_lapic_reg_write(vcpu->arch.apic, APIC_V_TSC_DEADLINE2, high);
 	kvm_lapic_reg_write(vcpu->arch.apic, APIC_V_TSC_DEADLINE, low);
 
+	trace_printk("nVM wrote low 0x%x, high 0x%x\n", low, high);
 	/*
 	   if (val_reg == val_vapic) {
 	   trace_printk("vals are the same: 0x%x\n", val_reg);
