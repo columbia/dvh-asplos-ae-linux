@@ -1401,6 +1401,9 @@ static void kvm_lapic_timer_expired(struct kvm_vcpu *vcpu)
 	if (is_guest_mode(vcpu)) {
 		__apic_timer_expired(apic, &apic->lapic_vtimer);
 		kvm_hypercall0(0x1010);
+		if (atomic_read(&apic->lapic_vtimer.pending) > 0) {
+			kvm_hypercall0(0x1011);
+		}
 	} else {
 		apic_timer_expired(vcpu->arch.apic);
 	}
@@ -2238,6 +2241,7 @@ int kvm_apic_local_deliver(struct kvm_lapic *apic, int lvt_type)
 			vector = 0xeb;
 			mode = 0;
 			trig_mode = 0;
+			kvm_hypercall0(0x1021);
 		}
 		return __apic_accept_irq(apic, mode, vector, 1, trig_mode,
 					NULL);
@@ -2361,6 +2365,7 @@ void kvm_inject_apic_timer_irqs(struct kvm_vcpu *vcpu)
 	}
 
 	if (atomic_read(&apic->lapic_vtimer.pending) > 0) {
+		kvm_hypercall0(0x1012);
 		kvm_apic_local_deliver(apic, APIC_LVTVT);
 		atomic_set(&apic->lapic_vtimer.pending, 0);
 	}
