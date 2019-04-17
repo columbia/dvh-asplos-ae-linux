@@ -1480,7 +1480,6 @@ static void start_sw_tscdeadline(struct kvm_lapic *apic,
 		do_div(ns, this_tsc_khz);
 		expire = ktime_add_ns(now, ns);
 		expire = ktime_sub_ns(expire, lapic_timer_advance_ns);
-		/* We need to initialize secondary hrtimer */
 		hrtimer_start(&ktimer->timer,
 				expire, HRTIMER_MODE_ABS_PINNED);
 	} else
@@ -2318,6 +2317,16 @@ static enum hrtimer_restart apic_timer_fn(struct hrtimer *data)
 		return HRTIMER_NORESTART;
 }
 
+static enum hrtimer_restart apic_vtimer_fn(struct hrtimer *data)
+{
+	struct kvm_timer *ktimer = container_of(data, struct kvm_timer, timer);
+	struct kvm_lapic *apic = container_of(ktimer, struct kvm_lapic, lapic_vtimer);
+
+	__apic_timer_expired(apic, ktimer);
+
+	return HRTIMER_NORESTART;
+}
+
 int kvm_create_lapic(struct kvm_vcpu *vcpu)
 {
 	struct kvm_lapic *apic;
@@ -2343,6 +2352,9 @@ int kvm_create_lapic(struct kvm_vcpu *vcpu)
 		     HRTIMER_MODE_ABS_PINNED);
 	apic->lapic_timer.timer.function = apic_timer_fn;
 
+	hrtimer_init(&apic->lapic_vtimer.timer, CLOCK_MONOTONIC,
+		     HRTIMER_MODE_ABS_PINNED);
+	apic->lapic_vtimer.timer.function = apic_vtimer_fn;
 	/*
 	 * APIC is created enabled. This will prevent kvm_lapic_set_base from
 	 * thinking that APIC satet has changed.
