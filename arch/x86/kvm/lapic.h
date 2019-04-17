@@ -34,10 +34,12 @@ struct kvm_timer {
 	ktime_t target_expiration;
 	u32 timer_mode;
 	u32 timer_mode_mask;
-	u64 tscdeadline;
-	u64 vtscdeadline;
+	u64 tscdeadline;			/* This has what the guest programs */
 	u64 expired_tscdeadline;
 	atomic_t pending;			/* accumulated triggered timers */
+	/* this flag shows how each timer is emulated in the hypervisor.
+	 * when non of the hw_timer is used, then sw timer is used
+	 */
 	bool hw_timer_in_use[HW_TIMER_MAX];	/* 0: hv timer
 						 * 1: virtual timer */
 };
@@ -45,6 +47,9 @@ struct kvm_timer {
 struct kvm_lapic {
 	unsigned long base_address;
 	struct kvm_io_device dev;
+	/* timer and vtimer are the timers for a VM. It's doesn't related to how
+	 * those timers are emulated in the hypervisor
+	 */
 	struct kvm_timer lapic_timer;
 	struct kvm_timer lapic_vtimer;
 	u32 divide_count;
