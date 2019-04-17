@@ -2744,6 +2744,8 @@ static void vmx_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	bool already_loaded = vmx->loaded_vmcs->cpu == cpu;
 
+	kvm_hypercall1(0xd1, __pa((vmx->vcpu.kvm->cpu_ir_table)));
+
 	if (!already_loaded) {
 		loaded_vmcs_clear(vmx->loaded_vmcs);
 		local_irq_disable();
@@ -6205,6 +6207,13 @@ static void ept_set_mmio_spte_mask(void)
 				   VMX_EPT_MISCONFIG_WX_VALUE);
 }
 
+static void setup_cpu_ir_entry(struct cpu_irte *irte, u32 dest_apic_id,
+			       struct pi_desc *pi_desc_addr_va)
+{
+	irte->pi_desc_addr = __pa(pi_desc_addr_va);
+	irte->dest_apic_id = dest_apic_id;
+}
+
 #define VMX_XSS_EXIT_BITMAP 0
 /*
  * Sets up the vmcs for emulated real mode.
@@ -6253,6 +6262,9 @@ static void vmx_vcpu_setup(struct vcpu_vmx *vmx)
 
 		vmcs_write16(POSTED_INTR_NV, POSTED_INTR_VECTOR);
 		vmcs_write64(POSTED_INTR_DESC_ADDR, __pa((&vmx->pi_desc)));
+
+		setup_cpu_ir_entry(&vmx->vcpu.kvm->cpu_ir_table[vmx->vcpu.vcpu_id],
+				   vmx->vcpu.vcpu_id, &vmx->pi_desc);
 	}
 
 	if (!kvm_pause_in_guest(vmx->vcpu.kvm)) {
@@ -10305,6 +10317,10 @@ static void vmx_free_vcpu(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 
+	/* Clear (vcpu, pi_desc) pair in the table */
+	vmx->vcpu.kvm->cpu_ir_table[vmx->vcpu.vcpu_id].dest_apic_id= 0;
+	vmx->vcpu.kvm->cpu_ir_table[vmx->vcpu.vcpu_id].pi_desc_addr = 0;
+
 	if (enable_pml)
 		vmx_destroy_pml_buffer(vmx);
 	free_vpid(vmx->vpid);
@@ -10401,6 +10417,13 @@ static struct kvm_vcpu *vmx_create_vcpu(struct kvm *kvm, unsigned int id)
 	vmx->pi_desc.nv = POSTED_INTR_VECTOR;
 	vmx->pi_desc.sn = 1;
 
+	/* TODO: wrap this as write_vmcs_xxx() */
+	/* We would like to write CPU IRT pointer in VMCS, but not sure if
+	 * anything is available there in the current architecture. We therefore
+	 * pass the pointer to the L0 hypervisor via vmcall for now even though
+	 * it causes one extra trap to L0 for L2 and L3 switching.
+	 */
+	kvm_hypercall1(0xd1, __pa((vmx->vcpu.kvm->cpu_ir_table)));
 	return &vmx->vcpu;
 
 free_vmcs:
@@ -10421,6 +10444,8 @@ static int vmx_vm_init(struct kvm *kvm)
 {
 	if (!ple_gap)
 		kvm->arch.pause_in_guest = true;
+
+	kvm->cpu_ir_table = kzalloc(sizeof(struct cpu_irte)*10, GFP_KERNEL);
 	return 0;
 }
 
@@ -12835,9 +12860,7 @@ static int pi_pre_block(struct kvm_vcpu *vcpu)
 	struct pi_desc old, new;
 	struct pi_desc *pi_desc = vcpu_to_pi_desc(vcpu);
 
-	if (!kvm_arch_has_assigned_device(vcpu->kvm) ||
-		!irq_remapping_cap(IRQ_POSTING_CAP)  ||
-		!kvm_vcpu_apicv_active(vcpu))
+	if (!kvm_vcpu_apicv_active(vcpu))
 		return 0;
 
 	WARN_ON(irqs_disabled());
