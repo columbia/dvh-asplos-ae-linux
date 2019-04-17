@@ -11785,6 +11785,8 @@ static int check_vmentry_postreqs(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12,
 	return 0;
 }
 
+static void set_vtimer_nvm_entry(struct kvm_vcpu *vcpu);
+static void set_vtimer_nvm_exit(struct kvm_vcpu *vcpu);
 static int enter_vmx_non_root_mode(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
@@ -11816,6 +11818,7 @@ static int enter_vmx_non_root_mode(struct kvm_vcpu *vcpu)
 	if (exit_qual)
 		goto fail;
 
+	set_vtimer_nvm_entry(vcpu);
 	/*
 	 * Note no nested_vmx_succeed or nested_vmx_fail here. At this point
 	 * we are no longer running L1, and VMLAUNCH/VMRESUME has not yet
@@ -12398,6 +12401,36 @@ static u64 read_msr_vTSCDEADLINE(struct kvm_vcpu *vcpu)
 	return (((u64)high) << 32) | low;
 }
 
+/*
+ * L1 (this) hypervisor multiplexes vTSC_DEADLINE register (i.e. virtual timer)
+ * between L2 and L3. By default, vTSC_DEADLINE has what L2 programs.
+ *
+ * When entering L3, L1 saves L2 context to *somewhere*, and restores L3 context
+ * from apic page. L1 also need to schedule a soft timer for L2.
+ *
+ * When exiting L3, L1 saves L3 context to apic page, which is visible to L2
+ * hypervisor. L1 need to schedule a soft timer for L3. L1 then restores L2
+ * context to the vTSC_DEADLINE.
+ */
+
+static void set_vtimer_nvm_entry(struct kvm_vcpu *vcpu)
+{
+	/* We use sw timer for the primary timer */
+	kvm_lapic_switch_virt_to_sw_timer(vcpu);
+
+	/* We use vtsc timer for the secondary timer */
+	kvm_lapic_start_secondary_vtsc(vcpu);
+}
+
+static void set_vtimer_nvm_exit(struct kvm_vcpu *vcpu)
+{
+	/* We use sw timer for the secondary timer */
+	kvm_lapic_switch_secondary_vtsc_to_sw(vcpu);
+
+	/* We use vtsc timer for the primary timer */
+	kvm_lapic_start_virt_timer(vcpu);
+}
+
 static void save_vtsc_deadline(struct kvm_vcpu *vcpu)
 {
 	struct kvm_lapic *apic = vcpu->arch.apic;
@@ -12427,6 +12460,7 @@ static void nested_vmx_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason,
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	struct vmcs12 *vmcs12 = get_vmcs12(vcpu);
 
+	set_vtimer_nvm_exit(vcpu);
 	/* trying to cancel vmlaunch/vmresume is a bug */
 	WARN_ON_ONCE(vmx->nested.nested_run_pending);
 
