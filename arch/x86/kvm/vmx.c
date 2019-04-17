@@ -9072,7 +9072,9 @@ static bool handle_nvm_tsc_deadline(struct kvm_vcpu *vcpu)
 	   }
 	   */
 
-	return false;
+	vmx->nvm_emulation_done = 1;
+
+	return true;
 }
 
 /*
