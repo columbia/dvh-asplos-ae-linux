@@ -1690,6 +1690,16 @@ void kvm_lapic_start_virt_timer(struct kvm_vcpu *vcpu)
 	start_virt_timer(apic, &apic->lapic_timer);
 }
 
+/* secondary means the emulated virtual timer for the VM.
+ * vtsc means we emulated the virtual timer using vTSC hardware
+ */
+void kvm_lapic_start_secondary_vtsc(struct kvm_vcpu *vcpu)
+{
+	struct kvm_lapic *apic = vcpu->arch.apic;
+
+	start_virt_timer(apic, &apic->lapic_vtimer);
+}
+
 /* FIXME: this would break if the timer mode for the secondary timer is NOT
  * tscdeadline; start_sw_period() sets up primary timer always.
  */
@@ -1794,6 +1804,21 @@ void kvm_lapic_switch_virt_to_sw_timer(struct kvm_vcpu *vcpu)
 	preempt_enable();
 }
 EXPORT_SYMBOL_GPL(kvm_lapic_switch_virt_to_sw_timer);
+
+void kvm_lapic_switch_secondary_vtsc_to_sw(struct kvm_vcpu *vcpu)
+{
+	struct kvm_lapic *apic = vcpu->arch.apic;
+	struct kvm_timer *ktimer = &apic->lapic_vtimer;
+	int timer = VIRT_TIMER;
+
+	preempt_disable();
+	if (ktimer->hw_timer_in_use[timer]) {
+		__cancel_hw_timer(apic, ktimer, timer);
+		__start_sw_timer(apic);
+	}
+	preempt_enable();
+}
+EXPORT_SYMBOL_GPL(kvm_lapic_switch_secondary_vtsc_to_sw);
 
 void kvm_lapic_restart_hw_timer(struct kvm_vcpu *vcpu)
 {

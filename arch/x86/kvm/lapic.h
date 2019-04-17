@@ -249,4 +249,6 @@ static inline enum lapic_mode kvm_apic_mode(u64 apic_base)
 
 bool kvm_lapic_hw_timer_in_use(struct kvm_vcpu *vcpu);
 void kvm_lapic_start_virt_timer(struct kvm_vcpu *vcpu);
+void kvm_lapic_start_secondary_vtsc(struct kvm_vcpu *vcpu);
+void kvm_lapic_switch_secondary_vtsc_to_sw(struct kvm_vcpu *vcpu);
 #endif
