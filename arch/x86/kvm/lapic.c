@@ -1457,9 +1457,10 @@ void wait_lapic_expire(struct kvm_vcpu *vcpu)
 			nsec_to_cycles(vcpu, lapic_timer_advance_ns)));
 }
 
-static void start_sw_tscdeadline(struct kvm_lapic *apic)
+static void start_sw_tscdeadline(struct kvm_lapic *apic,
+				 struct kvm_timer *ktimer)
 {
-	u64 guest_tsc, tscdeadline = apic->lapic_timer.tscdeadline;
+	u64 guest_tsc, tscdeadline = ktimer->tscdeadline;
 	u64 ns = 0;
 	ktime_t expire;
 	struct kvm_vcpu *vcpu = apic->vcpu;
@@ -1479,10 +1480,11 @@ static void start_sw_tscdeadline(struct kvm_lapic *apic)
 		do_div(ns, this_tsc_khz);
 		expire = ktime_add_ns(now, ns);
 		expire = ktime_sub_ns(expire, lapic_timer_advance_ns);
-		hrtimer_start(&apic->lapic_timer.timer,
+		/* We need to initialize secondary hrtimer */
+		hrtimer_start(&ktimer->timer,
 				expire, HRTIMER_MODE_ABS_PINNED);
 	} else
-		apic_timer_expired(apic);
+		__apic_timer_expired(apic, ktimer);
 
 	local_irq_restore(flags);
 }
@@ -1603,23 +1605,32 @@ bool kvm_lapic_hw_timer_in_use(struct kvm_vcpu *vcpu)
 }
 EXPORT_SYMBOL_GPL(kvm_lapic_hw_timer_in_use);
 
-static void cancel_hw_timer(struct kvm_lapic *apic, int timer)
+static void __cancel_hw_timer(struct kvm_lapic *apic,
+			      struct kvm_timer *ktimer, int timer)
 {
 	WARN_ON(preemptible());
-	WARN_ON(!apic->lapic_timer.hw_timer_in_use[timer]);
+	WARN_ON(!ktimer->hw_timer_in_use[timer]);
 
+	/* This is touching the real hardware, so it doesn't matter what timer
+	 * (primiary or secondary) we are using it for
+	 */
 	if (timer == HV_TIMER)
 		kvm_x86_ops->cancel_hv_timer(apic->vcpu);
 	else if (timer == VIRT_TIMER)
 		kvm_x86_ops->cancel_virt_timer(apic->vcpu);
 
-	apic->lapic_timer.hw_timer_in_use[timer] = false;
+	ktimer->hw_timer_in_use[timer] = false;
 	trace_kvm_hw_timer_state(apic->vcpu->vcpu_id, timer, false);
 }
 
-static bool start_hw_timer(struct kvm_lapic *apic, int timer)
+static void cancel_hw_timer(struct kvm_lapic *apic, int timer)
 {
-	struct kvm_timer *ktimer = &apic->lapic_timer;
+	__cancel_hw_timer(apic, &apic->lapic_timer, timer);
+}
+
+static bool start_hw_timer(struct kvm_lapic *apic, struct kvm_timer *ktimer,
+			   int timer)
+{
 	int r;
 	int (*set_hw_timer)(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc);
 
@@ -1664,21 +1675,24 @@ static bool start_hw_timer(struct kvm_lapic *apic, int timer)
 
 static bool start_hv_timer(struct kvm_lapic *apic)
 {
-	return start_hw_timer(apic, HV_TIMER);
+	return start_hw_timer(apic, &apic->lapic_timer, HV_TIMER);
 }
 
-static bool start_virt_timer(struct kvm_lapic *apic)
+static bool start_virt_timer(struct kvm_lapic *apic, struct kvm_timer *ktimer)
 {
-	return start_hw_timer(apic, VIRT_TIMER);
+	return start_hw_timer(apic, ktimer, VIRT_TIMER);
 }
 
 void kvm_lapic_start_virt_timer(struct kvm_vcpu *vcpu)
 {
 	struct kvm_lapic *apic = vcpu->arch.apic;
 
-	start_virt_timer(apic);
+	start_virt_timer(apic, &apic->lapic_timer);
 }
 
+/* FIXME: this would break if the timer mode for the secondary timer is NOT
+ * tscdeadline; start_sw_period() sets up primary timer always.
+ */
 static void __start_sw_timer(struct kvm_lapic *apic)
 {
 	struct kvm_timer *ktimer = &apic->lapic_timer;
@@ -1686,10 +1700,12 @@ static void __start_sw_timer(struct kvm_lapic *apic)
 	if (!apic_lvtt_period(apic) && atomic_read(&ktimer->pending))
 		return;
 
-	if (apic_lvtt_period(apic) || apic_lvtt_oneshot(apic))
+	if (apic_lvtt_period(apic) || apic_lvtt_oneshot(apic)) {
+		if (ktimer == &apic->lapic_vtimer)
+			BUG();
 		start_sw_period(apic);
-	else if (apic_lvtt_tscdeadline(apic))
-		start_sw_tscdeadline(apic);
+	} else if (apic_lvtt_tscdeadline(apic))
+		start_sw_tscdeadline(apic, ktimer);
 }
 
 static void start_sw_timer(struct kvm_lapic *apic)
@@ -1712,7 +1728,7 @@ static void restart_apic_timer(struct kvm_lapic *apic)
 
 	preempt_disable();
 	if (timer_opt_enable)
-		hw_timer = start_virt_timer(apic);
+		hw_timer = start_virt_timer(apic, &apic->lapic_timer);
 	else
 		hw_timer = start_hv_timer(apic);
 
