@@ -12409,27 +12409,10 @@ static u64 read_msr_vTSCDEADLINE(struct kvm_vcpu *vcpu)
  * from apic page. L1 also need to schedule a soft timer for L2.
  *
  * When exiting L3, L1 saves L3 context to apic page, which is visible to L2
- * hypervisor. L1 need to schedule a soft timer for L3. L1 then restores L2
- * context to the vTSC_DEADLINE.
+ * hypervisor. L1 then stops sw timer for L2 and sets up vTSC instead.
  */
 
-static void set_vtimer_nvm_entry(struct kvm_vcpu *vcpu)
-{
-	/* We use sw timer for the primary timer */
-	kvm_lapic_switch_virt_to_sw_timer(vcpu);
 
-	/* We use vtsc timer for the secondary timer */
-	kvm_lapic_start_secondary_vtsc(vcpu);
-}
-
-static void set_vtimer_nvm_exit(struct kvm_vcpu *vcpu)
-{
-	/* We use sw timer for the secondary timer */
-	kvm_lapic_switch_secondary_vtsc_to_sw(vcpu);
-
-	/* We use vtsc timer for the primary timer */
-	kvm_lapic_start_virt_timer(vcpu);
-}
 
 static void save_vtsc_deadline(struct kvm_vcpu *vcpu)
 {
@@ -12446,6 +12429,29 @@ static void save_vtsc_deadline(struct kvm_vcpu *vcpu)
 	kvm_hypercall2(0x1002, low, high);
 	trace_printk("On returning from nVM, we keep the vTSC_DEADLINE"
 		     " in apic page. low: 0x%x, high: 0x%x\n", low, high);
+}
+
+static void set_vtimer_nvm_entry(struct kvm_vcpu *vcpu)
+{
+	struct kvm_lapic *apic = vcpu->arch.apic;
+
+	/* We use sw timer for the primary timer */
+	kvm_lapic_switch_virt_to_sw_timer(vcpu);
+
+	/* We use vtsc timer for the secondary timer */
+	/* Why is it ok to write once, but read twice? */
+	wrmsrl(X2_APIC_V_TSC_DEADLINE, apic->lapic_vtimer.tscdeadline);
+}
+
+static void set_vtimer_nvm_exit(struct kvm_vcpu *vcpu)
+{
+	/* TODO: think what would happen if vtsc is expired on switching */
+
+	save_vtsc_deadline(vcpu);
+
+	/* We use vtsc timer for the primary timer.
+	 * background sw timer will be canceled in the function below. */
+	kvm_lapic_start_virt_timer(vcpu);
 }
 
 /*
