@@ -12716,7 +12716,7 @@ static int __vmx_set_hw_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc,
 		vmcs_set_bits(PIN_BASED_VM_EXEC_CONTROL,
 				PIN_BASED_VMX_PREEMPTION_TIMER);
 	} else {
-		wrmsrl(0x85f, apic->lapic_timer.tscdeadline);
+		wrmsrl(X2_APIC_V_TSC_DEADLINE, apic->lapic_timer.tscdeadline);
 	}
 
 	return delta_tsc == 0;
@@ -12743,7 +12743,7 @@ static void vmx_cancel_hv_timer(struct kvm_vcpu *vcpu)
 static void vmx_cancel_virt_timer(struct kvm_vcpu *vcpu)
 {
 	/* turn off the virtual timer */
-	wrmsrl(0x85f, 0);
+	wrmsrl(X2_APIC_V_TSC_DEADLINE, 0);
 }
 #endif
 
