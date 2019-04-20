@@ -1258,7 +1258,7 @@ int kvm_lapic_reg_read(struct kvm_lapic *apic, u32 offset, int len,
 	unsigned char alignment = offset & 0xf;
 	u32 result;
 	/* this bitmask has a bit cleared for each reserved register */
-	static const u64 rmask = 0x43ff01ffffffe70cULL;
+	static const u64 rmask = 0x47ff01ffffffe70cULL;
 
 	if ((alignment + len) > 4) {
 		apic_debug("KVM_APIC_READ: alignment error %x %d\n",

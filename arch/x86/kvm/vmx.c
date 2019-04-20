@@ -5753,6 +5753,7 @@ static void vmx_update_msr_bitmap_x2apic(unsigned long *msr_bitmap,
 			vmx_enable_intercept_for_msr(msr_bitmap, X2APIC_MSR(APIC_TMCCT), MSR_TYPE_R);
 			vmx_disable_intercept_for_msr(msr_bitmap, X2APIC_MSR(APIC_EOI), MSR_TYPE_W);
 			vmx_disable_intercept_for_msr(msr_bitmap, X2APIC_MSR(APIC_SELF_IPI), MSR_TYPE_W);
+			vmx_enable_intercept_for_msr(msr_bitmap, X2_APIC_V_TSC_DEADLINE, MSR_TYPE_R);
 		}
 	}
 }
