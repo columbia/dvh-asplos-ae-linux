@@ -1702,10 +1702,8 @@ void kvm_lapic_start_secondary_vtsc(struct kvm_vcpu *vcpu)
 /* FIXME: this would break if the timer mode for the secondary timer is NOT
  * tscdeadline; start_sw_period() sets up primary timer always.
  */
-static void __start_sw_timer(struct kvm_lapic *apic)
+static void __start_sw_timer(struct kvm_lapic *apic, struct kvm_timer *ktimer)
 {
-	struct kvm_timer *ktimer = &apic->lapic_timer;
-
 	if (!apic_lvtt_period(apic) && atomic_read(&ktimer->pending))
 		return;
 
@@ -1728,7 +1726,7 @@ static void start_sw_timer(struct kvm_lapic *apic)
 			cancel_hw_timer(apic, timer);
 	}
 
-	__start_sw_timer(apic);
+	__start_sw_timer(apic, &apic->lapic_timer);
 }
 
 static void restart_apic_timer(struct kvm_lapic *apic)
@@ -1798,7 +1796,7 @@ void kvm_lapic_switch_virt_to_sw_timer(struct kvm_vcpu *vcpu)
 	preempt_disable();
 	if (apic->lapic_timer.hw_timer_in_use[timer]) {
 		cancel_hw_timer(apic, timer);
-		__start_sw_timer(apic);
+		__start_sw_timer(apic, &apic->lapic_timer);
 	}
 	preempt_enable();
 }
@@ -1813,7 +1811,7 @@ void kvm_lapic_switch_secondary_vtsc_to_sw(struct kvm_vcpu *vcpu)
 	preempt_disable();
 	if (ktimer->hw_timer_in_use[timer]) {
 		__cancel_hw_timer(apic, ktimer, timer);
-		__start_sw_timer(apic);
+		__start_sw_timer(apic, ktimer);
 	}
 	preempt_enable();
 }
