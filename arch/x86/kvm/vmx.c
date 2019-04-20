@@ -68,7 +68,7 @@ MODULE_AUTHOR("Qumranet");
 MODULE_LICENSE("GPL");
 
 bool ipi_opt_enable = 0;
-int timer_opt_enable = 0;
+int timer_opt_enable = 1;
 
 static const struct x86_cpu_id vmx_cpu_id[] = {
 	X86_FEATURE_MATCH(X86_FEATURE_VMX),
@@ -13481,8 +13481,11 @@ static void timer_opt(void)
 				     NULL, &stats_fs_fops);
 	if (!dentry)
 		kvm_err("error creating timer debugfs dentry");
-	else
+	else {
 		kvm_info("timer debugfs up and running");
+		timer_opt_enable = 1;
+		kvm_info("timer_opt_enable: 1");
+	}
 }
 
 static int __init vmx_init(void)
