@@ -12760,7 +12760,6 @@ static void vmx_sync_vtsc_deadline(struct vcpu_vmx *vmx)
 	struct kvm_vcpu *vcpu = &vmx->vcpu;
 	struct kvm_lapic *apic = vcpu->arch.apic;
 	struct kvm_timer *ktimer;
-	u64 tsc_deadline;
 
 	if (!timer_opt_enable)
 		return;
