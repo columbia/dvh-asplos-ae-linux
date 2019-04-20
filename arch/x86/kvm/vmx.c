@@ -12392,12 +12392,13 @@ static void load_vmcs12_host_state(struct kvm_vcpu *vcpu,
 
 static u64 read_msr_vTSCDEADLINE(struct kvm_vcpu *vcpu)
 {
-	u64 val;
+	u32 low, high;
 
 	/* read from the virtual tsc register */
-	rdmsrl(X2_APIC_V_TSC_DEADLINE, val);
+	rdmsrl(X2_APIC_V_TSC_DEADLINE, low);
+	rdmsrl(X2_APIC_V_TSC_DEADLINE2, high);
 
-	return val;
+	return (((u64)high) << 32) | low;
 }
 
 /*
@@ -12417,13 +12418,10 @@ static void save_vtsc_deadline(struct kvm_vcpu *vcpu)
 {
 	struct kvm_lapic *apic = vcpu->arch.apic;
 	u32 low, high;
-	u64 val;
 
 	kvm_hypercall0(0x1001);
-	rdmsrl(X2_APIC_V_TSC_DEADLINE, val);
-
-	low = (u32) val;
-	high = (u32) (val >> 32);
+	rdmsrl(X2_APIC_V_TSC_DEADLINE, low);
+	rdmsrl(X2_APIC_V_TSC_DEADLINE2, high);
 
 	kvm_lapic_set_reg(apic, APIC_V_TSC_DEADLINE, low);
 	kvm_lapic_set_reg(apic, APIC_V_TSC_DEADLINE2, high);
