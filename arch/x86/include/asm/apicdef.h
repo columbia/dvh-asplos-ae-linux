@@ -145,9 +145,9 @@
 #define		APIC_EILVT_MASKED	(1 << 16)
 
 /* this is where an L1 hyp can read L2 TSC_Deadline */
-#define X2_APIC_V_TSC_DEADLINE	0x85F
-#define APIC_V_TSC_DEADLINE	0x5F0
-#define APIC_V_TSC_DEADLINE2	0x600
+#define X2_APIC_V_TSC_DEADLINE	0x83a
+#define APIC_V_TSC_DEADLINE	0x3a0
+#define APIC_V_TSC_DEADLINE2	0x3b0
 
 #define APIC_BASE (fix_to_virt(FIX_APIC_BASE))
 #define APIC_BASE_MSR	0x800
