@@ -12439,16 +12439,19 @@ static void set_vtimer_nvm_entry(struct kvm_vcpu *vcpu)
 	/* We use sw timer for the primary timer */
 	kvm_lapic_switch_virt_to_sw_timer(vcpu);
 
-	/* We use vtsc timer for the secondary timer */
-	/* Why is it ok to write once, but read twice? */
-	wrmsrl(X2_APIC_V_TSC_DEADLINE, apic->lapic_vtimer.tscdeadline);
+	/* We've been using sw timer for the secondary timer emulation.
+	 * Let's switch to using vtsc from now on. SW timer is canceld in the
+	 * function below */
+	kvm_lapic_start_secondary_vtsc(vcpu);
 }
 
 static void set_vtimer_nvm_exit(struct kvm_vcpu *vcpu)
 {
 	/* TODO: think what would happen if vtsc is expired on switching */
 
+	/* L1 now use sw timer to provide the secondary timer to L2 */
 	save_vtsc_deadline(vcpu);
+	kvm_lapic_switch_secondary_vtsc_to_sw(vcpu);
 
 	/* We use vtsc timer for the primary timer.
 	 * background sw timer will be canceled in the function below. */
