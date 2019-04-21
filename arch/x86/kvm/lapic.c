@@ -1457,8 +1457,9 @@ void wait_lapic_expire(struct kvm_vcpu *vcpu)
 			nsec_to_cycles(vcpu, lapic_timer_advance_ns)));
 }
 
-static void start_sw_tscdeadline(struct kvm_lapic *apic,
-				 struct kvm_timer *ktimer)
+static void __start_sw_tscdeadline(struct kvm_lapic *apic,
+				   struct kvm_timer *ktimer,
+				   bool use_l2_tsc)
 {
 	u64 guest_tsc, tscdeadline = ktimer->tscdeadline;
 	u64 ns = 0;
@@ -1474,7 +1475,11 @@ static void start_sw_tscdeadline(struct kvm_lapic *apic,
 	local_irq_save(flags);
 
 	now = ktime_get();
-	guest_tsc = kvm_read_l1_tsc(vcpu, rdtsc());
+	if (use_l2_tsc)
+		guest_tsc = kvm_read_l2_tsc(vcpu, rdtsc());
+	else
+		guest_tsc = kvm_read_l1_tsc(vcpu, rdtsc());
+
 	if (likely(tscdeadline > guest_tsc)) {
 		ns = (tscdeadline - guest_tsc) * 1000000ULL;
 		do_div(ns, this_tsc_khz);
@@ -1486,6 +1491,12 @@ static void start_sw_tscdeadline(struct kvm_lapic *apic,
 		__apic_timer_expired(apic, ktimer);
 
 	local_irq_restore(flags);
+}
+
+static void start_sw_tscdeadline(struct kvm_lapic *apic,
+				 struct kvm_timer *ktimer)
+{
+	__start_sw_tscdeadline(apic, ktimer, false);
 }
 
 static void update_target_expiration(struct kvm_lapic *apic, uint32_t old_divisor)
