@@ -11795,6 +11795,7 @@ static int enter_vmx_non_root_mode(struct kvm_vcpu *vcpu)
 	u32 exit_qual;
 	int r;
 
+	set_vtimer_nvm_entry(vcpu);
 	enter_guest_mode(vcpu);
 
 	if (!(vmcs12->vm_entry_controls & VM_ENTRY_LOAD_DEBUG_CONTROLS))
@@ -11819,7 +11820,6 @@ static int enter_vmx_non_root_mode(struct kvm_vcpu *vcpu)
 	if (exit_qual)
 		goto fail;
 
-	set_vtimer_nvm_entry(vcpu);
 	/*
 	 * Note no nested_vmx_succeed or nested_vmx_fail here. At this point
 	 * we are no longer running L1, and VMLAUNCH/VMRESUME has not yet
@@ -12470,7 +12470,6 @@ static void nested_vmx_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason,
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	struct vmcs12 *vmcs12 = get_vmcs12(vcpu);
 
-	set_vtimer_nvm_exit(vcpu);
 	/* trying to cancel vmlaunch/vmresume is a bug */
 	WARN_ON_ONCE(vmx->nested.nested_run_pending);
 
@@ -12483,6 +12482,7 @@ static void nested_vmx_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason,
 				   VMXERR_ENTRY_INVALID_CONTROL_FIELD));
 
 	leave_guest_mode(vcpu);
+	set_vtimer_nvm_exit(vcpu);
 
 	if (vmcs12->cpu_based_vm_exec_control & CPU_BASED_USE_TSC_OFFSETING)
 		vcpu->arch.tsc_offset -= vmcs12->tsc_offset;
