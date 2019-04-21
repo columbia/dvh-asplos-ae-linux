@@ -1844,7 +1844,11 @@ void kvm_lapic_switch_secondary_vtsc_to_sw(struct kvm_vcpu *vcpu)
 	preempt_disable();
 	if (ktimer->hw_timer_in_use[timer]) {
 		__cancel_hw_timer(apic, ktimer, timer);
-		__start_sw_timer(apic, ktimer);
+		/* We take a short cut to call this function directly. We are
+		 * supposed to call __start_sw_timer to handle other timer
+		 * modes, but we know that Linux doesn't use them.
+		 */
+		__start_sw_tscdeadline(apic, ktimer, true);
 	}
 	preempt_enable();
 }
