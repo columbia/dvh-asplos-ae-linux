@@ -1631,13 +1631,22 @@ static bool start_hw_timer(struct kvm_lapic *apic, struct kvm_timer *ktimer,
 			   int timer)
 {
 	int r;
-	int (*set_hw_timer)(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc);
+	bool primary;
+	int (*set_hw_timer)(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc,
+			    bool primary);
 
 	if (timer == HV_TIMER) {
 		set_hw_timer = kvm_x86_ops->set_hv_timer;
 	} else if (timer == VIRT_TIMER) {
 		set_hw_timer = kvm_x86_ops->set_virt_timer;
 	} else
+		return false;
+
+	if (ktimer == &apic->lapic_vtimer)
+		primary = false;
+	else if (ktimer == &apic->lapic_timer)
+		primary = true;
+	else
 		return false;
 
 	WARN_ON(preemptible());
@@ -1650,7 +1659,7 @@ static bool start_hw_timer(struct kvm_lapic *apic, struct kvm_timer *ktimer,
 	if (!ktimer->tscdeadline)
 		return false;
 
-	r = set_hw_timer(apic->vcpu, ktimer->tscdeadline);
+	r = set_hw_timer(apic->vcpu, ktimer->tscdeadline, primary);
 	if (r < 0)
 		return false;
 

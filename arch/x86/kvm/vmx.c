@@ -12682,11 +12682,17 @@ static inline int u64_shl_div_u64(u64 a, unsigned int shift,
 
 /* Set up hardware timer for a VM */
 static int __vmx_set_hw_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc,
-			      bool hv_timer)
+			      bool hv_timer, bool primary)
 {
 	struct vcpu_vmx *vmx;
 	u64 tscl, guest_tscl, delta_tsc, lapic_timer_advance_cycles;
 	struct kvm_lapic *apic = vcpu->arch.apic;
+	struct kvm_timer *ktimer;
+
+	if (primary)
+		ktimer = &apic->lapic_timer;
+	else
+		ktimer = &apic->lapic_vtimer;
 
 	if (kvm_mwait_in_guest(vcpu->kvm))
 		return -EOPNOTSUPP;
@@ -12724,20 +12730,23 @@ static int __vmx_set_hw_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc,
 		vmcs_set_bits(PIN_BASED_VM_EXEC_CONTROL,
 				PIN_BASED_VMX_PREEMPTION_TIMER);
 	} else {
-		wrmsrl(X2_APIC_V_TSC_DEADLINE, apic->lapic_timer.tscdeadline);
+		wrmsrl(X2_APIC_V_TSC_DEADLINE, ktimer->tscdeadline);
 	}
 
 	return delta_tsc == 0;
 }
 
-static int vmx_set_hv_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc)
+static int vmx_set_hv_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc,
+			    bool primary)
 {
-	return __vmx_set_hw_timer(vcpu, guest_deadline_tsc, true);
+	/* primary doesn't matter for hv timer */
+	return __vmx_set_hw_timer(vcpu, guest_deadline_tsc, true, primary);
 }
 
-static int vmx_set_virt_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc)
+static int vmx_set_virt_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc,
+			      bool primary)
 {
-	return __vmx_set_hw_timer(vcpu, guest_deadline_tsc, false);
+	return __vmx_set_hw_timer(vcpu, guest_deadline_tsc, false, primary);
 }
 
 static void vmx_cancel_hv_timer(struct kvm_vcpu *vcpu)
