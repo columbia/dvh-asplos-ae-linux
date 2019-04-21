@@ -11795,13 +11795,17 @@ static int enter_vmx_non_root_mode(struct kvm_vcpu *vcpu)
 	u32 exit_qual;
 	int r;
 
-	set_vtimer_nvm_entry(vcpu);
-	enter_guest_mode(vcpu);
 
 	if (!(vmcs12->vm_entry_controls & VM_ENTRY_LOAD_DEBUG_CONTROLS))
 		vmx->nested.vmcs01_debugctl = vmcs_read64(GUEST_IA32_DEBUGCTL);
 
 	vmx_switch_vmcs(vcpu, &vmx->nested.vmcs02);
+
+	/* This should be called after vmcs02 is set so that the virtual
+	 * hardware take a look at a correct tsc_offset in vmcs02 */
+	set_vtimer_nvm_entry(vcpu);
+	enter_guest_mode(vcpu);
+
 	vmx_segment_cache_clear(vmx);
 
 	if (vmcs12->cpu_based_vm_exec_control & CPU_BASED_USE_TSC_OFFSETING)
