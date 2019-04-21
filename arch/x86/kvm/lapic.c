@@ -1772,7 +1772,7 @@ static void restart_secondary_timer_sw(struct kvm_lapic *apic)
 	vtimer->tscdeadline = vtsc;
 
 	hrtimer_cancel(&vtimer->timer);
-	__start_sw_timer(apic, vtimer);
+	__start_sw_tscdeadline(apic, vtimer, true);
 }
 
 static void restart_apic_timer(struct kvm_lapic *apic)
