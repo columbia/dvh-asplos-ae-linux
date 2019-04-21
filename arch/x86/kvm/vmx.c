@@ -11793,8 +11793,10 @@ static int check_vmentry_postreqs(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12,
 	return 0;
 }
 
-static void set_vtimer_nvm_entry(struct kvm_vcpu *vcpu);
-static void set_vtimer_nvm_exit(struct kvm_vcpu *vcpu);
+static void set_vtimer_nvm_entry_pre(struct kvm_vcpu *vcpu);
+static void set_vtimer_nvm_entry_post(struct kvm_vcpu *vcpu);
+static void set_vtimer_nvm_exit_pre(struct kvm_vcpu *vcpu);
+static void set_vtimer_nvm_exit_post(struct kvm_vcpu *vcpu);
 static int enter_vmx_non_root_mode(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
@@ -11806,12 +11808,17 @@ static int enter_vmx_non_root_mode(struct kvm_vcpu *vcpu)
 	if (!(vmcs12->vm_entry_controls & VM_ENTRY_LOAD_DEBUG_CONTROLS))
 		vmx->nested.vmcs01_debugctl = vmcs_read64(GUEST_IA32_DEBUGCTL);
 
-	vmx_switch_vmcs(vcpu, &vmx->nested.vmcs02);
 
 	/* This should be called after vmcs02 is set so that the virtual
 	 * hardware take a look at a correct tsc_offset in vmcs02 */
-	set_vtimer_nvm_entry(vcpu);
+	set_vtimer_nvm_entry_pre(vcpu);
+	vmx_switch_vmcs(vcpu, &vmx->nested.vmcs02);
 	enter_guest_mode(vcpu);
+	/* We set vtimer after changing the guest_mode flag so that the expiring
+	 * timer is for nvm. Maybe we should stop the timer before, and change
+	 * to the guest mode, then program vtimer?
+	 */
+	set_vtimer_nvm_entry_post(vcpu);
 
 	vmx_segment_cache_clear(vmx);
 
@@ -12443,12 +12450,27 @@ static void save_vtsc_deadline(struct kvm_vcpu *vcpu)
 		     " in apic page. low: 0x%x, high: 0x%x\n", low, high);
 }
 
-static void set_vtimer_nvm_entry(struct kvm_vcpu *vcpu)
+/* This should be called before changing is_guest_mode() to nvm because a
+ * function, start_sw_deadline(), sees the is_guest_mode() flag to get the
+ * current tsc and calculate time for sw timer based on that.
+ */
+static void set_vtimer_nvm_entry_pre(struct kvm_vcpu *vcpu)
 {
 	struct kvm_lapic *apic = vcpu->arch.apic;
 
 	/* We use sw timer for the primary timer */
 	kvm_lapic_switch_virt_to_sw_timer(vcpu);
+}
+
+/* This should be called AFTER switching to VMCS02 because when setting vtimer,
+ * tsc_offset in VMCS matters to set it correctly. Now that the deadline is set
+ * by nVM using tsc_offset in VMCS02, we also set the virt timer after switching
+ * to VMCS02.
+ */
+static void set_vtimer_nvm_entry_post(struct kvm_vcpu *vcpu)
+{
+	struct kvm_lapic *apic = vcpu->arch.apic;
+	struct kvm_timer *ktimer = &apic->lapic_vtimer;
 
 	/* We've been using sw timer for the secondary timer emulation.
 	 * Let's switch to using vtsc from now on. SW timer is canceld in the
@@ -12456,14 +12478,21 @@ static void set_vtimer_nvm_entry(struct kvm_vcpu *vcpu)
 	kvm_lapic_start_secondary_vtsc(vcpu);
 }
 
-static void set_vtimer_nvm_exit(struct kvm_vcpu *vcpu)
+/* This is to set sw timer using tsc_deadline from L2. To do that, the
+ * is_guest_mode() flag should be true on calling this function
+ */
+static void set_vtimer_nvm_exit_pre(struct kvm_vcpu *vcpu)
 {
-	/* TODO: think what would happen if vtsc is expired on switching */
-
 	/* L1 now use sw timer to provide the secondary timer to L2 */
 	save_vtsc_deadline(vcpu);
 	kvm_lapic_switch_secondary_vtsc_to_sw(vcpu);
+}
 
+/* This function should be called AFTER switching to VMCS01. tsc_deadline we
+ * have here is for the VM, so let the harwdare look tsc_offset in vmcs01
+ */
+static void set_vtimer_nvm_exit_post(struct kvm_vcpu *vcpu)
+{
 	/* We use vtsc timer for the primary timer.
 	 * background sw timer will be canceled in the function below. */
 	kvm_lapic_start_virt_timer(vcpu);
@@ -12492,9 +12521,6 @@ static void nested_vmx_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason,
 	WARN_ON_ONCE(vmx->fail && (vmcs_read32(VM_INSTRUCTION_ERROR) !=
 				   VMXERR_ENTRY_INVALID_CONTROL_FIELD));
 
-	leave_guest_mode(vcpu);
-	set_vtimer_nvm_exit(vcpu);
-
 	if (vmcs12->cpu_based_vm_exec_control & CPU_BASED_USE_TSC_OFFSETING)
 		vcpu->arch.tsc_offset -= vmcs12->tsc_offset;
 
@@ -12510,7 +12536,11 @@ static void nested_vmx_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason,
 			nested_vmx_abort(vcpu, VMX_ABORT_SAVE_GUEST_MSR_FAIL);
 	}
 
+	set_vtimer_nvm_exit_pre(vcpu);
 	vmx_switch_vmcs(vcpu, &vmx->vmcs01);
+	leave_guest_mode(vcpu);
+	set_vtimer_nvm_exit_post(vcpu);
+
 	vm_entry_controls_reset_shadow(vmx);
 	vm_exit_controls_reset_shadow(vmx);
 	vmx_segment_cache_clear(vmx);
@@ -12741,6 +12771,12 @@ static int __vmx_set_hw_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc,
 		vmcs_set_bits(PIN_BASED_VM_EXEC_CONTROL,
 				PIN_BASED_VMX_PREEMPTION_TIMER);
 	} else {
+		/* On programming this, it matters what VMCS is visible to
+		 * virtual hardware. For example, when set vtimer for nvm, we
+		 * need to set vmcs02 active so that the underlying hardware cna
+		 * take a look at the tsc_offset for it. The tsc_offset is what
+		 * is used when originally L2 programmed vtimer
+		 */
 		wrmsrl(X2_APIC_V_TSC_DEADLINE, ktimer->tscdeadline);
 	}
 
