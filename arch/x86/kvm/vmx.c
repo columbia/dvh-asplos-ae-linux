@@ -12456,8 +12456,6 @@ static void save_vtsc_deadline(struct kvm_vcpu *vcpu)
  */
 static void set_vtimer_nvm_entry_pre(struct kvm_vcpu *vcpu)
 {
-	struct kvm_lapic *apic = vcpu->arch.apic;
-
 	/* We use sw timer for the primary timer */
 	kvm_lapic_switch_virt_to_sw_timer(vcpu);
 }
@@ -12470,7 +12468,6 @@ static void set_vtimer_nvm_entry_pre(struct kvm_vcpu *vcpu)
 static void set_vtimer_nvm_entry_post(struct kvm_vcpu *vcpu)
 {
 	struct kvm_lapic *apic = vcpu->arch.apic;
-	struct kvm_timer *ktimer = &apic->lapic_vtimer;
 
 	/* We've been using sw timer for the secondary timer emulation.
 	 * Let's switch to using vtsc from now on. SW timer is canceld in the
