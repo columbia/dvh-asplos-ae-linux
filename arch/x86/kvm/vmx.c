@@ -12535,9 +12535,9 @@ static void nested_vmx_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason,
 			nested_vmx_abort(vcpu, VMX_ABORT_SAVE_GUEST_MSR_FAIL);
 	}
 
-	set_vtimer_nvm_exit_pre(vcpu);
 	vmx_switch_vmcs(vcpu, &vmx->vmcs01);
 	leave_guest_mode(vcpu);
+	set_vtimer_nvm_exit_pre(vcpu);
 	set_vtimer_nvm_exit_post(vcpu);
 
 	vm_entry_controls_reset_shadow(vmx);
