@@ -714,6 +714,9 @@ struct kvm_vcpu_arch {
 
 	/* be preempted when it's in kernel-mode(cpl=0) */
 	bool preempted_in_kernel;
+
+	/* Set this one when switching vmcs */
+	bool in_vmcs_switch;
 };
 
 struct kvm_lpage_info {

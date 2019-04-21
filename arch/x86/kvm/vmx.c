@@ -2805,7 +2805,7 @@ static void vmx_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 	vmx->host_pkru = read_pkru();
 	vmx->host_debugctlmsr = get_debugctlmsr();
 
-	if (timer_opt_enable)
+	if (timer_opt_enable && !vcpu->arch.in_vmcs_switch)
 		kvm_lapic_start_timers(vcpu);
 }
 
@@ -2830,7 +2830,7 @@ static void vmx_vcpu_put(struct kvm_vcpu *vcpu)
 	__vmx_load_host_state(to_vmx(vcpu));
 
 	/* We only cancel virt timer, not hv_timer, which is not ticking */
-	if (timer_opt_enable)
+	if (timer_opt_enable && !vcpu->arch.in_vmcs_switch)
 		kvm_lapic_switch_all_virt_to_sw_timer(vcpu);
 }
 
@@ -10281,11 +10281,13 @@ static void vmx_switch_vmcs(struct kvm_vcpu *vcpu, struct loaded_vmcs *vmcs)
 	if (vmx->loaded_vmcs == vmcs)
 		return;
 
+	vcpu->arch.in_vmcs_switch = true;
 	cpu = get_cpu();
 	vmx->loaded_vmcs = vmcs;
 	vmx_vcpu_put(vcpu);
 	vmx_vcpu_load(vcpu, cpu);
 	put_cpu();
+	vcpu->arch.in_vmcs_switch = false;
 }
 
 /*
