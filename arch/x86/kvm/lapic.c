@@ -1709,6 +1709,19 @@ void kvm_lapic_start_virt_timer(struct kvm_vcpu *vcpu)
 	start_virt_timer(apic, &apic->lapic_timer);
 }
 
+/* This starts primary and secondary timers. */
+void kvm_lapic_start_timers(struct kvm_vcpu *vcpu)
+{
+	struct kvm_lapic *apic = vcpu->arch.apic;
+	struct kvm_timer *ptimer = &apic->lapic_timer;
+	struct kvm_timer *vtimer = &apic->lapic_vtimer;
+
+	if (is_guest_mode(vcpu))
+		start_virt_timer(apic, vtimer);
+	else
+		start_virt_timer(apic, ptimer);
+}
+
 /* secondary means the emulated virtual timer for the VM.
  * vtsc means we emulated the virtual timer using vTSC hardware
  */
@@ -1821,16 +1834,42 @@ void kvm_lapic_switch_to_sw_timer(struct kvm_vcpu *vcpu)
 }
 EXPORT_SYMBOL_GPL(kvm_lapic_switch_to_sw_timer);
 
+static void switch_hw_to_sw_timer(struct kvm_lapic *apic,
+				  struct kvm_timer *ktimer,
+				  int timer)
+{
+	if (ktimer->hw_timer_in_use[timer]) {
+		cancel_hw_timer(apic, timer);
+		__start_sw_timer(apic, ktimer);
+	}
+}
+
+void kvm_lapic_switch_all_virt_to_sw_timer(struct kvm_vcpu *vcpu)
+{
+	struct kvm_lapic *apic = vcpu->arch.apic;
+	int timer = VIRT_TIMER;
+	struct kvm_timer *ktimer;
+
+	preempt_disable();
+
+	ktimer = &apic->lapic_timer;
+	switch_hw_to_sw_timer(apic, ktimer, timer);
+
+	ktimer = &apic->lapic_vtimer;
+	switch_hw_to_sw_timer(apic, ktimer, timer);
+
+	preempt_enable();
+}
+EXPORT_SYMBOL_GPL(kvm_lapic_switch_all_virt_to_sw_timer);
+
 void kvm_lapic_switch_virt_to_sw_timer(struct kvm_vcpu *vcpu)
 {
 	struct kvm_lapic *apic = vcpu->arch.apic;
 	int timer = VIRT_TIMER;
+	struct kvm_timer *ktimer = &apic->lapic_timer;;
 
 	preempt_disable();
-	if (apic->lapic_timer.hw_timer_in_use[timer]) {
-		cancel_hw_timer(apic, timer);
-		__start_sw_timer(apic, &apic->lapic_timer);
-	}
+	switch_hw_to_sw_timer(apic, ktimer, timer);
 	preempt_enable();
 }
 EXPORT_SYMBOL_GPL(kvm_lapic_switch_virt_to_sw_timer);
