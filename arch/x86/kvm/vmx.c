@@ -12487,8 +12487,6 @@ static void nested_vmx_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason,
 	if (vmcs12->cpu_based_vm_exec_control & CPU_BASED_USE_TSC_OFFSETING)
 		vcpu->arch.tsc_offset -= vmcs12->tsc_offset;
 
-	save_vtsc_deadline(vcpu);
-
 	if (likely(!vmx->fail)) {
 		if (exit_reason == -1)
 			sync_vmcs12(vcpu, vmcs12);
