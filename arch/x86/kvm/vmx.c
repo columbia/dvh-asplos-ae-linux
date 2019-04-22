@@ -2830,8 +2830,8 @@ static void vmx_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 	vmx->host_pkru = read_pkru();
 	vmx->host_debugctlmsr = get_debugctlmsr();
 
-	if (timer_opt_enable)
-		kvm_lapic_start_virt_timer(vcpu);
+	if (timer_opt_enable && !vcpu->arch.in_vmcs_switch)
+		kvm_lapic_start_timers(vcpu);
 }
 
 static void vmx_vcpu_pi_put(struct kvm_vcpu *vcpu)
@@ -2855,8 +2855,8 @@ static void vmx_vcpu_put(struct kvm_vcpu *vcpu)
 	__vmx_load_host_state(to_vmx(vcpu));
 
 	/* We only cancel virt timer, not hv_timer, which is not ticking */
-	if (timer_opt_enable)
-		kvm_lapic_switch_virt_to_sw_timer(vcpu);
+	if (timer_opt_enable && !vcpu->arch.in_vmcs_switch)
+		kvm_lapic_switch_all_virt_to_sw_timer(vcpu);
 }
 
 static bool emulation_required(struct kvm_vcpu *vcpu)
@@ -5778,6 +5778,7 @@ static void vmx_update_msr_bitmap_x2apic(unsigned long *msr_bitmap,
 			vmx_enable_intercept_for_msr(msr_bitmap, X2APIC_MSR(APIC_TMCCT), MSR_TYPE_R);
 			vmx_disable_intercept_for_msr(msr_bitmap, X2APIC_MSR(APIC_EOI), MSR_TYPE_W);
 			vmx_disable_intercept_for_msr(msr_bitmap, X2APIC_MSR(APIC_SELF_IPI), MSR_TYPE_W);
+			vmx_enable_intercept_for_msr(msr_bitmap, X2_APIC_V_TSC_DEADLINE, MSR_TYPE_R);
 		}
 	}
 }
@@ -10364,11 +10365,13 @@ static void vmx_switch_vmcs(struct kvm_vcpu *vcpu, struct loaded_vmcs *vmcs)
 	if (vmx->loaded_vmcs == vmcs)
 		return;
 
+	vcpu->arch.in_vmcs_switch = true;
 	cpu = get_cpu();
 	vmx->loaded_vmcs = vmcs;
 	vmx_vcpu_put(vcpu);
 	vmx_vcpu_load(vcpu, cpu);
 	put_cpu();
+	vcpu->arch.in_vmcs_switch = false;
 }
 
 /*
@@ -11396,6 +11399,13 @@ static int nested_vmx_load_cr3(struct kvm_vcpu *vcpu, unsigned long cr3, bool ne
 	return 0;
 }
 
+u64 vmx_get_l2_tsc_offset(struct kvm_vcpu *vcpu)
+{
+	struct vmcs12 *vmcs12 = get_vmcs12(vcpu);
+
+	return vmcs12->tsc_offset;
+}
+
 static void prepare_vmcs02_full(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
@@ -11998,8 +12008,10 @@ static int check_vmentry_postreqs(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12,
 	return 0;
 }
 
-static void set_vtimer_nvm_entry(struct kvm_vcpu *vcpu);
-static void set_vtimer_nvm_exit(struct kvm_vcpu *vcpu);
+static void set_vtimer_nvm_entry_pre(struct kvm_vcpu *vcpu);
+static void set_vtimer_nvm_entry_post(struct kvm_vcpu *vcpu);
+static void set_vtimer_nvm_exit_pre(struct kvm_vcpu *vcpu);
+static void set_vtimer_nvm_exit_post(struct kvm_vcpu *vcpu);
 static int enter_vmx_non_root_mode(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
@@ -12007,12 +12019,22 @@ static int enter_vmx_non_root_mode(struct kvm_vcpu *vcpu)
 	u32 exit_qual;
 	int r;
 
-	enter_guest_mode(vcpu);
 
 	if (!(vmcs12->vm_entry_controls & VM_ENTRY_LOAD_DEBUG_CONTROLS))
 		vmx->nested.vmcs01_debugctl = vmcs_read64(GUEST_IA32_DEBUGCTL);
 
+
+	/* This should be called after vmcs02 is set so that the virtual
+	 * hardware take a look at a correct tsc_offset in vmcs02 */
+	set_vtimer_nvm_entry_pre(vcpu);
 	vmx_switch_vmcs(vcpu, &vmx->nested.vmcs02);
+	enter_guest_mode(vcpu);
+	/* We set vtimer after changing the guest_mode flag so that the expiring
+	 * timer is for nvm. Maybe we should stop the timer before, and change
+	 * to the guest mode, then program vtimer?
+	 */
+	set_vtimer_nvm_entry_post(vcpu);
+
 	vmx_segment_cache_clear(vmx);
 
 	if (vmcs12->cpu_based_vm_exec_control & CPU_BASED_USE_TSC_OFFSETING)
@@ -12031,7 +12053,6 @@ static int enter_vmx_non_root_mode(struct kvm_vcpu *vcpu)
 	if (exit_qual)
 		goto fail;
 
-	set_vtimer_nvm_entry(vcpu);
 	/*
 	 * Note no nested_vmx_succeed or nested_vmx_fail here. At this point
 	 * we are no longer running L1, and VMLAUNCH/VMRESUME has not yet
@@ -12679,43 +12700,69 @@ static u64 read_msr_vTSCDEADLINE(struct kvm_vcpu *vcpu)
  * from apic page. L1 also need to schedule a soft timer for L2.
  *
  * When exiting L3, L1 saves L3 context to apic page, which is visible to L2
- * hypervisor. L1 need to schedule a soft timer for L3. L1 then restores L2
- * context to the vTSC_DEADLINE.
+ * hypervisor. L1 then stops sw timer for L2 and sets up vTSC instead.
  */
 
-static void set_vtimer_nvm_entry(struct kvm_vcpu *vcpu)
-{
-	/* We use sw timer for the primary timer */
-	kvm_lapic_switch_virt_to_sw_timer(vcpu);
 
-	/* We use vtsc timer for the secondary timer */
-	kvm_lapic_start_secondary_vtsc(vcpu);
-}
-
-static void set_vtimer_nvm_exit(struct kvm_vcpu *vcpu)
-{
-	/* We use sw timer for the secondary timer */
-	kvm_lapic_switch_secondary_vtsc_to_sw(vcpu);
-
-	/* We use vtsc timer for the primary timer */
-	kvm_lapic_start_virt_timer(vcpu);
-}
 
 static void save_vtsc_deadline(struct kvm_vcpu *vcpu)
 {
 	struct kvm_lapic *apic = vcpu->arch.apic;
 	u32 low, high;
 
-	kvm_hypercall0(0x1001);
 	rdmsrl(X2_APIC_V_TSC_DEADLINE, low);
 	rdmsrl(X2_APIC_V_TSC_DEADLINE2, high);
 
 	kvm_lapic_set_reg(apic, APIC_V_TSC_DEADLINE, low);
 	kvm_lapic_set_reg(apic, APIC_V_TSC_DEADLINE2, high);
 
-	kvm_hypercall2(0x1002, low, high);
 	trace_printk("On returning from nVM, we keep the vTSC_DEADLINE"
 		     " in apic page. low: 0x%x, high: 0x%x\n", low, high);
+}
+
+/* This should be called before changing is_guest_mode() to nvm because a
+ * function, start_sw_deadline(), sees the is_guest_mode() flag to get the
+ * current tsc and calculate time for sw timer based on that.
+ */
+static void set_vtimer_nvm_entry_pre(struct kvm_vcpu *vcpu)
+{
+	/* We use sw timer for the primary timer */
+	kvm_lapic_switch_virt_to_sw_timer(vcpu);
+}
+
+/* This should be called AFTER switching to VMCS02 because when setting vtimer,
+ * tsc_offset in VMCS matters to set it correctly. Now that the deadline is set
+ * by nVM using tsc_offset in VMCS02, we also set the virt timer after switching
+ * to VMCS02.
+ */
+static void set_vtimer_nvm_entry_post(struct kvm_vcpu *vcpu)
+{
+	struct kvm_lapic *apic = vcpu->arch.apic;
+
+	/* We've been using sw timer for the secondary timer emulation.
+	 * Let's switch to using vtsc from now on. SW timer is canceld in the
+	 * function below */
+	kvm_lapic_start_secondary_vtsc(vcpu);
+}
+
+/* This is to set sw timer using tsc_deadline from L2. To do that, the
+ * is_guest_mode() flag should be true on calling this function
+ */
+static void set_vtimer_nvm_exit_pre(struct kvm_vcpu *vcpu)
+{
+	/* L1 now use sw timer to provide the secondary timer to L2 */
+	save_vtsc_deadline(vcpu);
+	kvm_lapic_switch_secondary_vtsc_to_sw(vcpu);
+}
+
+/* This function should be called AFTER switching to VMCS01. tsc_deadline we
+ * have here is for the VM, so let the harwdare look tsc_offset in vmcs01
+ */
+static void set_vtimer_nvm_exit_post(struct kvm_vcpu *vcpu)
+{
+	/* We use vtsc timer for the primary timer.
+	 * background sw timer will be canceled in the function below. */
+	kvm_lapic_start_virt_timer(vcpu);
 }
 
 /*
@@ -12731,7 +12778,6 @@ static void nested_vmx_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason,
 	struct vmcs12 *vmcs12 = get_vmcs12(vcpu);
 	struct pi_desc *shadow_pi_desc = search_shadow_pi_desc(vcpu, vmcs12->posted_intr_desc_addr);
 
-	set_vtimer_nvm_exit(vcpu);
 	/* trying to cancel vmlaunch/vmresume is a bug */
 	WARN_ON_ONCE(vmx->nested.nested_run_pending);
 
@@ -12743,12 +12789,8 @@ static void nested_vmx_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason,
 	WARN_ON_ONCE(vmx->fail && (vmcs_read32(VM_INSTRUCTION_ERROR) !=
 				   VMXERR_ENTRY_INVALID_CONTROL_FIELD));
 
-	leave_guest_mode(vcpu);
-
 	if (vmcs12->cpu_based_vm_exec_control & CPU_BASED_USE_TSC_OFFSETING)
 		vcpu->arch.tsc_offset -= vmcs12->tsc_offset;
-
-	save_vtsc_deadline(vcpu);
 
 	if (likely(!vmx->fail)) {
 		if (exit_reason == -1)
@@ -12763,6 +12805,10 @@ static void nested_vmx_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason,
 	}
 
 	vmx_switch_vmcs(vcpu, &vmx->vmcs01);
+	leave_guest_mode(vcpu);
+	set_vtimer_nvm_exit_pre(vcpu);
+	set_vtimer_nvm_exit_post(vcpu);
+
 	vm_entry_controls_reset_shadow(vmx);
 	vm_exit_controls_reset_shadow(vmx);
 	vmx_segment_cache_clear(vmx);
@@ -12966,11 +13012,17 @@ static inline int u64_shl_div_u64(u64 a, unsigned int shift,
 
 /* Set up hardware timer for a VM */
 static int __vmx_set_hw_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc,
-			      bool hv_timer)
+			      bool hv_timer, bool primary)
 {
 	struct vcpu_vmx *vmx;
 	u64 tscl, guest_tscl, delta_tsc, lapic_timer_advance_cycles;
 	struct kvm_lapic *apic = vcpu->arch.apic;
+	struct kvm_timer *ktimer;
+
+	if (primary)
+		ktimer = &apic->lapic_timer;
+	else
+		ktimer = &apic->lapic_vtimer;
 
 	if (kvm_mwait_in_guest(vcpu->kvm))
 		return -EOPNOTSUPP;
@@ -13008,20 +13060,29 @@ static int __vmx_set_hw_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc,
 		vmcs_set_bits(PIN_BASED_VM_EXEC_CONTROL,
 				PIN_BASED_VMX_PREEMPTION_TIMER);
 	} else {
-		wrmsrl(0x85f, apic->lapic_timer.tscdeadline);
+		/* On programming this, it matters what VMCS is visible to
+		 * virtual hardware. For example, when set vtimer for nvm, we
+		 * need to set vmcs02 active so that the underlying hardware cna
+		 * take a look at the tsc_offset for it. The tsc_offset is what
+		 * is used when originally L2 programmed vtimer
+		 */
+		wrmsrl(X2_APIC_V_TSC_DEADLINE, ktimer->tscdeadline);
 	}
 
 	return delta_tsc == 0;
 }
 
-static int vmx_set_hv_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc)
+static int vmx_set_hv_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc,
+			    bool primary)
 {
-	return __vmx_set_hw_timer(vcpu, guest_deadline_tsc, true);
+	/* primary doesn't matter for hv timer */
+	return __vmx_set_hw_timer(vcpu, guest_deadline_tsc, true, primary);
 }
 
-static int vmx_set_virt_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc)
+static int vmx_set_virt_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc,
+			      bool primary)
 {
-	return __vmx_set_hw_timer(vcpu, guest_deadline_tsc, false);
+	return __vmx_set_hw_timer(vcpu, guest_deadline_tsc, false, primary);
 }
 
 static void vmx_cancel_hv_timer(struct kvm_vcpu *vcpu)
@@ -13035,7 +13096,7 @@ static void vmx_cancel_hv_timer(struct kvm_vcpu *vcpu)
 static void vmx_cancel_virt_timer(struct kvm_vcpu *vcpu)
 {
 	/* turn off the virtual timer */
-	wrmsrl(0x85f, 0);
+	wrmsrl(X2_APIC_V_TSC_DEADLINE, 0);
 }
 #endif
 
@@ -13044,7 +13105,6 @@ static void vmx_sync_vtsc_deadline(struct vcpu_vmx *vmx)
 	struct kvm_vcpu *vcpu = &vmx->vcpu;
 	struct kvm_lapic *apic = vcpu->arch.apic;
 	struct kvm_timer *ktimer;
-	u64 tsc_deadline;
 
 	if (!timer_opt_enable)
 		return;
@@ -13590,6 +13650,8 @@ static struct kvm_x86_ops vmx_x86_ops __ro_after_init = {
 	.pre_enter_smm = vmx_pre_enter_smm,
 	.pre_leave_smm = vmx_pre_leave_smm,
 	.enable_smi_window = enable_smi_window,
+
+	.get_l2_tsc_offset = vmx_get_l2_tsc_offset,
 };
 
 static ssize_t timer_fs_write(struct file *file, const char __user *buffer,
