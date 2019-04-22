@@ -2206,7 +2206,7 @@ int kvm_apic_local_deliver(struct kvm_lapic *apic, int lvt_type)
 
 		if (lvt_type == APIC_LVTVT) {
 			/* for v4.18 guest hyp*/
-			vector = 0xeb;
+			vector = LOCAL_VTIMER_VECTOR;
 			mode = 0; /* reserved */
 			trig_mode = 0; /* reserved */
 		}
