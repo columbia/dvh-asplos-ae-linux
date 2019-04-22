@@ -9101,6 +9101,7 @@ static bool handle_nvm_msr(struct kvm_vcpu *vcpu, u32 exit_reason)
 		return timer_opt_enable && handle_nvm_tsc_deadline(vcpu);
 	default:
 		break;
+	}
 
 	return false;
 }
