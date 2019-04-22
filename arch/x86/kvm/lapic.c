@@ -2355,7 +2355,7 @@ int kvm_apic_local_deliver(struct kvm_lapic *apic, int lvt_type)
 		trig_mode = reg & APIC_LVT_LEVEL_TRIGGER;
 
 		if (lvt_type == APIC_LVTVT) {
-			vector = 0xeb;
+			vector = LOCAL_VTIMER_VECTOR;
 			mode = 0;
 			trig_mode = 0;
 		}

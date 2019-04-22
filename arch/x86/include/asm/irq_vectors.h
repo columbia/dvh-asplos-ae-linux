@@ -106,7 +106,7 @@
 #endif
 
 #define LOCAL_TIMER_VECTOR		0xec
-#define LOCAL_VTIMER_VECTOR		0xeb
+#define LOCAL_VTIMER_VECTOR		0xea
 
 #define NR_VECTORS			 256
 
