@@ -1398,7 +1398,7 @@ TRACE_EVENT(kvm_set_nvm_vtimer,
 			__entry->vcpu_id = vcpu_id;
 			__entry->val = val;
 			),
-		TP_printk("vcpu_id %d opt nvm timeout 0x%llx\n",
+		TP_printk("vcpu_id %d opt nvm timeout %lld ns\n",
 			__entry->vcpu_id,
 			__entry->val)
 );
