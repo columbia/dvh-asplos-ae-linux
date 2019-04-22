@@ -1475,7 +1475,7 @@ static void __start_sw_tscdeadline(struct kvm_lapic *apic,
 	local_irq_save(flags);
 
 	now = ktime_get();
-	if (use_l2_tsc)
+	if (ktimer == &apic->lapic_vtimer)
 		guest_tsc = kvm_read_l2_tsc(vcpu, rdtsc());
 	else
 		guest_tsc = kvm_read_l1_tsc(vcpu, rdtsc());
