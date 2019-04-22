@@ -23,22 +23,35 @@ enum lapic_mode {
 	LAPIC_MODE_X2APIC = MSR_IA32_APICBASE_ENABLE | X2APIC_ENABLE,
 };
 
+/* HW supported timers for virtual machines */
+#define	HV_TIMER	0
+#define	VIRT_TIMER	1
+#define	HW_TIMER_MAX	2
+
 struct kvm_timer {
 	struct hrtimer timer;
 	s64 period; 				/* unit: ns */
 	ktime_t target_expiration;
 	u32 timer_mode;
 	u32 timer_mode_mask;
-	u64 tscdeadline;
+	u64 tscdeadline;			/* This has what the guest programs */
 	u64 expired_tscdeadline;
 	atomic_t pending;			/* accumulated triggered timers */
-	bool hv_timer_in_use;
+	/* this flag shows how each timer is emulated in the hypervisor.
+	 * when non of the hw_timer is used, then sw timer is used
+	 */
+	bool hw_timer_in_use[HW_TIMER_MAX];	/* 0: hv timer
+						 * 1: virtual timer */
 };
 
 struct kvm_lapic {
 	unsigned long base_address;
 	struct kvm_io_device dev;
+	/* timer and vtimer are the timers for a VM. It's doesn't related to how
+	 * those timers are emulated in the hypervisor
+	 */
 	struct kvm_timer lapic_timer;
+	struct kvm_timer lapic_vtimer;
 	u32 divide_count;
 	struct kvm_vcpu *vcpu;
 	bool sw_enabled;
@@ -224,14 +237,18 @@ bool kvm_intr_is_single_vcpu_fast(struct kvm *kvm, struct kvm_lapic_irq *irq,
 int kvm_vector_to_index(u32 vector, u32 dest_vcpus,
 			const unsigned long *bitmap, u32 bitmap_size);
 void kvm_lapic_switch_to_sw_timer(struct kvm_vcpu *vcpu);
-void kvm_lapic_switch_to_hv_timer(struct kvm_vcpu *vcpu);
+void kvm_lapic_switch_virt_to_sw_timer(struct kvm_vcpu *vcpu);
+void kvm_lapic_switch_to_hw_timer(struct kvm_vcpu *vcpu);
 void kvm_lapic_expired_hv_timer(struct kvm_vcpu *vcpu);
-bool kvm_lapic_hv_timer_in_use(struct kvm_vcpu *vcpu);
-void kvm_lapic_restart_hv_timer(struct kvm_vcpu *vcpu);
+void kvm_lapic_restart_hw_timer(struct kvm_vcpu *vcpu);
 
 static inline enum lapic_mode kvm_apic_mode(u64 apic_base)
 {
 	return apic_base & (MSR_IA32_APICBASE_ENABLE | X2APIC_ENABLE);
 }
 
+bool kvm_lapic_hw_timer_in_use(struct kvm_vcpu *vcpu);
+void kvm_lapic_start_virt_timer(struct kvm_vcpu *vcpu);
+void kvm_lapic_start_secondary_vtsc(struct kvm_vcpu *vcpu);
+void kvm_lapic_switch_secondary_vtsc_to_sw(struct kvm_vcpu *vcpu);
 #endif

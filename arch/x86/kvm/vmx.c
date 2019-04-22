@@ -35,6 +35,7 @@
 #include <linux/hrtimer.h>
 #include <linux/frame.h>
 #include <linux/nospec.h>
+#include <linux/debugfs.h>
 #include "kvm_cache_regs.h"
 #include "x86.h"
 
@@ -195,6 +196,7 @@ struct kvm_vmx {
 	bool ept_identity_pagetable_done;
 	gpa_t ept_identity_map_addr;
 };
+bool timer_opt_enable = 1;
 
 #define NR_AUTOLOAD_MSRS 8
 
@@ -2827,6 +2829,9 @@ static void vmx_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 	vmx_vcpu_pi_load(vcpu, cpu);
 	vmx->host_pkru = read_pkru();
 	vmx->host_debugctlmsr = get_debugctlmsr();
+
+	if (timer_opt_enable)
+		kvm_lapic_start_virt_timer(vcpu);
 }
 
 static void vmx_vcpu_pi_put(struct kvm_vcpu *vcpu)
@@ -2848,6 +2853,10 @@ static void vmx_vcpu_put(struct kvm_vcpu *vcpu)
 	vmx_vcpu_pi_put(vcpu);
 
 	__vmx_load_host_state(to_vmx(vcpu));
+
+	/* We only cancel virt timer, not hv_timer, which is not ticking */
+	if (timer_opt_enable)
+		kvm_lapic_switch_virt_to_sw_timer(vcpu);
 }
 
 static bool emulation_required(struct kvm_vcpu *vcpu)
@@ -9526,8 +9535,10 @@ static int vmx_handle_exit(struct kvm_vcpu *vcpu)
 	if (vmx->emulation_required)
 		return handle_invalid_guest_state(vcpu);
 
-	if (is_guest_mode(vcpu) && nested_vmx_exit_reflected(vcpu, exit_reason))
+	if (is_guest_mode(vcpu) && nested_vmx_exit_reflected(vcpu, exit_reason)) {
+		++vcpu->stat.nvm_exits;
 		return nested_vmx_reflect_vmexit(vcpu, exit_reason);
+	}
 
 	if (exit_reason & VMX_EXIT_REASONS_FAILED_VMENTRY) {
 		dump_vmcs();
@@ -9590,9 +9601,10 @@ static int vmx_handle_exit(struct kvm_vcpu *vcpu)
 	}
 
 	if (exit_reason < kvm_vmx_max_exit_handlers
-	    && kvm_vmx_exit_handlers[exit_reason])
+	    && kvm_vmx_exit_handlers[exit_reason]) {
+		++vcpu->stat.exit_handler[exit_reason];
 		return kvm_vmx_exit_handlers[exit_reason](vcpu);
-	else {
+	} else {
 		vcpu_unimpl(vcpu, "vmx: unexpected exit reason 0x%x\n",
 				exit_reason);
 		kvm_queue_exception(vcpu, UD_VECTOR);
@@ -9772,6 +9784,7 @@ static void vmx_apicv_post_state_restore(struct kvm_vcpu *vcpu)
 	memset(vmx->pi_desc.pir, 0, sizeof(vmx->pi_desc.pir));
 }
 
+static void vmx_sync_vtsc_deadline(struct vcpu_vmx *vmx);
 static void vmx_complete_atomic_exit(struct vcpu_vmx *vmx)
 {
 	u32 exit_intr_info = 0;
@@ -10325,6 +10338,7 @@ sync_exit:
 	vmx->loaded_vmcs->launched = 1;
 	vmx->idt_vectoring_info = vmcs_read32(IDT_VECTORING_INFO_FIELD);
 
+	vmx_sync_vtsc_deadline(vmx);
 	vmx_complete_atomic_exit(vmx);
 	vmx_recover_nmi_blocking(vmx);
 	vmx_complete_interrupts(vmx);
@@ -11984,6 +11998,8 @@ static int check_vmentry_postreqs(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12,
 	return 0;
 }
 
+static void set_vtimer_nvm_entry(struct kvm_vcpu *vcpu);
+static void set_vtimer_nvm_exit(struct kvm_vcpu *vcpu);
 static int enter_vmx_non_root_mode(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
@@ -12015,6 +12031,7 @@ static int enter_vmx_non_root_mode(struct kvm_vcpu *vcpu)
 	if (exit_qual)
 		goto fail;
 
+	set_vtimer_nvm_entry(vcpu);
 	/*
 	 * Note no nested_vmx_succeed or nested_vmx_fail here. At this point
 	 * we are no longer running L1, and VMLAUNCH/VMRESUME has not yet
@@ -12643,6 +12660,64 @@ static void load_vmcs12_host_state(struct kvm_vcpu *vcpu,
 		nested_vmx_abort(vcpu, VMX_ABORT_LOAD_HOST_MSR_FAIL);
 }
 
+static u64 read_msr_vTSCDEADLINE(struct kvm_vcpu *vcpu)
+{
+	u32 low, high;
+
+	/* read from the virtual tsc register */
+	rdmsrl(X2_APIC_V_TSC_DEADLINE, low);
+	rdmsrl(X2_APIC_V_TSC_DEADLINE2, high);
+
+	return (((u64)high) << 32) | low;
+}
+
+/*
+ * L1 (this) hypervisor multiplexes vTSC_DEADLINE register (i.e. virtual timer)
+ * between L2 and L3. By default, vTSC_DEADLINE has what L2 programs.
+ *
+ * When entering L3, L1 saves L2 context to *somewhere*, and restores L3 context
+ * from apic page. L1 also need to schedule a soft timer for L2.
+ *
+ * When exiting L3, L1 saves L3 context to apic page, which is visible to L2
+ * hypervisor. L1 need to schedule a soft timer for L3. L1 then restores L2
+ * context to the vTSC_DEADLINE.
+ */
+
+static void set_vtimer_nvm_entry(struct kvm_vcpu *vcpu)
+{
+	/* We use sw timer for the primary timer */
+	kvm_lapic_switch_virt_to_sw_timer(vcpu);
+
+	/* We use vtsc timer for the secondary timer */
+	kvm_lapic_start_secondary_vtsc(vcpu);
+}
+
+static void set_vtimer_nvm_exit(struct kvm_vcpu *vcpu)
+{
+	/* We use sw timer for the secondary timer */
+	kvm_lapic_switch_secondary_vtsc_to_sw(vcpu);
+
+	/* We use vtsc timer for the primary timer */
+	kvm_lapic_start_virt_timer(vcpu);
+}
+
+static void save_vtsc_deadline(struct kvm_vcpu *vcpu)
+{
+	struct kvm_lapic *apic = vcpu->arch.apic;
+	u32 low, high;
+
+	kvm_hypercall0(0x1001);
+	rdmsrl(X2_APIC_V_TSC_DEADLINE, low);
+	rdmsrl(X2_APIC_V_TSC_DEADLINE2, high);
+
+	kvm_lapic_set_reg(apic, APIC_V_TSC_DEADLINE, low);
+	kvm_lapic_set_reg(apic, APIC_V_TSC_DEADLINE2, high);
+
+	kvm_hypercall2(0x1002, low, high);
+	trace_printk("On returning from nVM, we keep the vTSC_DEADLINE"
+		     " in apic page. low: 0x%x, high: 0x%x\n", low, high);
+}
+
 /*
  * Emulate an exit from nested guest (L2) to L1, i.e., prepare to run L1
  * and modify vmcs12 to make it see what it would expect to see there if
@@ -12656,6 +12731,7 @@ static void nested_vmx_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason,
 	struct vmcs12 *vmcs12 = get_vmcs12(vcpu);
 	struct pi_desc *shadow_pi_desc = search_shadow_pi_desc(vcpu, vmcs12->posted_intr_desc_addr);
 
+	set_vtimer_nvm_exit(vcpu);
 	/* trying to cancel vmlaunch/vmresume is a bug */
 	WARN_ON_ONCE(vmx->nested.nested_run_pending);
 
@@ -12671,6 +12747,8 @@ static void nested_vmx_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason,
 
 	if (vmcs12->cpu_based_vm_exec_control & CPU_BASED_USE_TSC_OFFSETING)
 		vcpu->arch.tsc_offset -= vmcs12->tsc_offset;
+
+	save_vtsc_deadline(vcpu);
 
 	if (likely(!vmx->fail)) {
 		if (exit_reason == -1)
@@ -12886,10 +12964,13 @@ static inline int u64_shl_div_u64(u64 a, unsigned int shift,
 	return 0;
 }
 
-static int vmx_set_hv_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc)
+/* Set up hardware timer for a VM */
+static int __vmx_set_hw_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc,
+			      bool hv_timer)
 {
 	struct vcpu_vmx *vmx;
 	u64 tscl, guest_tscl, delta_tsc, lapic_timer_advance_cycles;
+	struct kvm_lapic *apic = vcpu->arch.apic;
 
 	if (kvm_mwait_in_guest(vcpu->kvm))
 		return -EOPNOTSUPP;
@@ -12922,11 +13003,25 @@ static int vmx_set_hv_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc)
 	if (delta_tsc >> (cpu_preemption_timer_multi + 32))
 		return -ERANGE;
 
-	vmx->hv_deadline_tsc = tscl + delta_tsc;
-	vmcs_set_bits(PIN_BASED_VM_EXEC_CONTROL,
-			PIN_BASED_VMX_PREEMPTION_TIMER);
+	if (hv_timer) {
+		vmx->hv_deadline_tsc = tscl + delta_tsc;
+		vmcs_set_bits(PIN_BASED_VM_EXEC_CONTROL,
+				PIN_BASED_VMX_PREEMPTION_TIMER);
+	} else {
+		wrmsrl(0x85f, apic->lapic_timer.tscdeadline);
+	}
 
 	return delta_tsc == 0;
+}
+
+static int vmx_set_hv_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc)
+{
+	return __vmx_set_hw_timer(vcpu, guest_deadline_tsc, true);
+}
+
+static int vmx_set_virt_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc)
+{
+	return __vmx_set_hw_timer(vcpu, guest_deadline_tsc, false);
 }
 
 static void vmx_cancel_hv_timer(struct kvm_vcpu *vcpu)
@@ -12936,7 +13031,33 @@ static void vmx_cancel_hv_timer(struct kvm_vcpu *vcpu)
 	vmcs_clear_bits(PIN_BASED_VM_EXEC_CONTROL,
 			PIN_BASED_VMX_PREEMPTION_TIMER);
 }
+
+static void vmx_cancel_virt_timer(struct kvm_vcpu *vcpu)
+{
+	/* turn off the virtual timer */
+	wrmsrl(0x85f, 0);
+}
 #endif
+
+static void vmx_sync_vtsc_deadline(struct vcpu_vmx *vmx)
+{
+	struct kvm_vcpu *vcpu = &vmx->vcpu;
+	struct kvm_lapic *apic = vcpu->arch.apic;
+	struct kvm_timer *ktimer;
+	u64 tsc_deadline;
+
+	if (!timer_opt_enable)
+		return;
+
+	if (is_guest_mode(vcpu))
+		ktimer = &apic->lapic_vtimer;
+	else
+		ktimer = &apic->lapic_timer;
+
+	ktimer->tscdeadline = read_msr_vTSCDEADLINE(vcpu);
+	if (ktimer->tscdeadline)
+		ktimer->hw_timer_in_use[VIRT_TIMER] = true;
+}
 
 static void vmx_sched_in(struct kvm_vcpu *vcpu, int cpu)
 {
@@ -13113,7 +13234,8 @@ static int vmx_pre_block(struct kvm_vcpu *vcpu)
 	if (pi_pre_block(vcpu))
 		return 1;
 
-	if (kvm_lapic_hv_timer_in_use(vcpu))
+	/* If we use either hv or virt timer, we need to schedule a sw timer */
+	if (kvm_lapic_hw_timer_in_use(vcpu))
 		kvm_lapic_switch_to_sw_timer(vcpu);
 
 	return 0;
@@ -13132,8 +13254,9 @@ static void pi_post_block(struct kvm_vcpu *vcpu)
 
 static void vmx_post_block(struct kvm_vcpu *vcpu)
 {
-	if (kvm_x86_ops->set_hv_timer)
-		kvm_lapic_switch_to_hv_timer(vcpu);
+	/* hv timer is the only hw timer for now */
+	if (kvm_x86_ops->set_hv_timer || kvm_x86_ops->set_virt_timer)
+		kvm_lapic_switch_to_hw_timer(vcpu);
 
 	pi_post_block(vcpu);
 }
@@ -13456,6 +13579,9 @@ static struct kvm_x86_ops vmx_x86_ops __ro_after_init = {
 #ifdef CONFIG_X86_64
 	.set_hv_timer = vmx_set_hv_timer,
 	.cancel_hv_timer = vmx_cancel_hv_timer,
+
+	.set_virt_timer = vmx_set_virt_timer,
+	.cancel_virt_timer = vmx_cancel_virt_timer,
 #endif
 
 	.setup_mce = vmx_setup_mce,
@@ -13465,6 +13591,66 @@ static struct kvm_x86_ops vmx_x86_ops __ro_after_init = {
 	.pre_leave_smm = vmx_pre_leave_smm,
 	.enable_smi_window = enable_smi_window,
 };
+
+static ssize_t timer_fs_write(struct file *file, const char __user *buffer,
+		size_t count, loff_t *pos)
+{
+	char command[64];
+	int len;
+
+ 	len = min(count, sizeof(command) - 1);
+	if (strncpy_from_user(command, buffer, len) < 0)
+		return -EFAULT;
+	command[len] = '\0';
+
+ #if 0
+	if (strncmp(command, "enable", 6) == 0) {
+	} else if (strncmp(command, "disable", 7) == 0) {
+	} else if (strncmp(command, "reset", 5) == 0) {
+	}
+#endif
+	if (strncmp(command, "y", 1) == 0)
+		timer_opt_enable = 1;
+	else if (strncmp(command, "1", 1) == 0)
+		timer_opt_enable = 1;
+	else if (strncmp(command, "n", 1) == 0)
+		timer_opt_enable = 0;
+	else if (strncmp(command, "0", 1) == 0)
+		timer_opt_enable = 0;
+
+	printk("timer_opt_enable: %d\n", timer_opt_enable);
+ 	/* ignore the rest of the buffer, only one command at a time */
+	*pos += count;
+	return count;
+}
+
+static int timer_open(struct seq_file *m, void *v)
+{
+	return 0;
+}
+
+static int timer_fs_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, timer_open, NULL);
+}
+
+ static const struct file_operations stats_fs_fops = {
+	.owner = THIS_MODULE,
+	.open = timer_fs_open,
+	.read = seq_read,
+	.write = timer_fs_write,
+};
+
+static void timer_opt(void)
+{
+	struct dentry *dentry;
+	dentry = debugfs_create_file("timer_opt", 0666, kvm_debugfs_dir,
+				     NULL, &stats_fs_fops);
+	if (!dentry)
+		kvm_err("error creating timer debugfs dentry");
+	else
+		kvm_info("timer debugfs up and running");
+}
 
 static int __init vmx_init(void)
 {
@@ -13504,6 +13690,7 @@ static int __init vmx_init(void)
 	if (r)
 		return r;
 
+	timer_opt();
 #ifdef CONFIG_KEXEC_CORE
 	rcu_assign_pointer(crash_vmclear_loaded_vmcss,
 			   crash_vmclear_local_loaded_vmcss);

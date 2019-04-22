@@ -98,6 +98,17 @@ static u64 __read_mostly efer_reserved_bits = ~((u64)EFER_SCE);
 #define KVM_X2APIC_API_VALID_FLAGS (KVM_X2APIC_API_USE_32BIT_IDS | \
                                     KVM_X2APIC_API_DISABLE_BROADCAST_QUIRK)
 
+static DEFINE_PER_CPU(struct kvm_vcpu *, kvm_running_vcpu);
+static void kvm_set_running_vcpu(struct kvm_vcpu *vcpu)
+{
+	__this_cpu_write(kvm_running_vcpu, vcpu);
+}
+
+struct kvm_vcpu *kvm_get_running_vcpu(void)
+{
+	return __this_cpu_read(kvm_running_vcpu);
+}
+
 static void update_cr8_intercept(struct kvm_vcpu *vcpu);
 static void process_nmi(struct kvm_vcpu *vcpu);
 static void enter_smm(struct kvm_vcpu *vcpu);
@@ -207,6 +218,63 @@ struct kvm_stats_debugfs_item debugfs_entries[] = {
 	{ "largepages", VM_STAT(lpages) },
 	{ "max_mmu_page_hash_collisions",
 		VM_STAT(max_mmu_page_hash_collisions) },
+	{ "exits_EXCEPTION_NMI", VCPU_STAT(exit_handler[EXIT_REASON_EXCEPTION_NMI]) },
+	{ "exits_EXTERNAL_INTERRUPT", VCPU_STAT(exit_handler[EXIT_REASON_EXTERNAL_INTERRUPT]) },
+	{ "exits_TRIPLE_FAULT", VCPU_STAT(exit_handler[EXIT_REASON_TRIPLE_FAULT]) },
+	{ "exits_PENDING_INTERRUPT", VCPU_STAT(exit_handler[EXIT_REASON_PENDING_INTERRUPT]) },
+	{ "exits_NMI_WINDOW", VCPU_STAT(exit_handler[EXIT_REASON_NMI_WINDOW]) },
+	{ "exits_TASK_SWITCH", VCPU_STAT(exit_handler[EXIT_REASON_TASK_SWITCH]) },
+	{ "exits_CPUID", VCPU_STAT(exit_handler[EXIT_REASON_CPUID]) },
+	{ "exits_HLT", VCPU_STAT(exit_handler[EXIT_REASON_HLT]) },
+	{ "exits_INVD", VCPU_STAT(exit_handler[EXIT_REASON_INVD]) },
+	{ "exits_INVLPG", VCPU_STAT(exit_handler[EXIT_REASON_INVLPG]) },
+	{ "exits_RDPMC", VCPU_STAT(exit_handler[EXIT_REASON_RDPMC]) },
+	{ "exits_RDTSC", VCPU_STAT(exit_handler[EXIT_REASON_RDTSC]) },
+	{ "exits_VMCALL", VCPU_STAT(exit_handler[EXIT_REASON_VMCALL]) },
+	{ "exits_VMCLEAR", VCPU_STAT(exit_handler[EXIT_REASON_VMCLEAR]) },
+	{ "exits_VMLAUNCH", VCPU_STAT(exit_handler[EXIT_REASON_VMLAUNCH]) },
+	{ "exits_VMPTRLD", VCPU_STAT(exit_handler[EXIT_REASON_VMPTRLD]) },
+	{ "exits_VMPTRST", VCPU_STAT(exit_handler[EXIT_REASON_VMPTRST]) },
+	{ "exits_VMREAD", VCPU_STAT(exit_handler[EXIT_REASON_VMREAD]) },
+	{ "exits_VMRESUME", VCPU_STAT(exit_handler[EXIT_REASON_VMRESUME]) },
+	{ "exits_VMWRITE", VCPU_STAT(exit_handler[EXIT_REASON_VMWRITE]) },
+	{ "exits_VMOFF", VCPU_STAT(exit_handler[EXIT_REASON_VMOFF]) },
+	{ "exits_VMON", VCPU_STAT(exit_handler[EXIT_REASON_VMON]) },
+	{ "exits_CR_ACCESS", VCPU_STAT(exit_handler[EXIT_REASON_CR_ACCESS]) },
+	{ "exits_DR_ACCESS", VCPU_STAT(exit_handler[EXIT_REASON_DR_ACCESS]) },
+	{ "exits_IO_INSTRUCTION", VCPU_STAT(exit_handler[EXIT_REASON_IO_INSTRUCTION]) },
+	{ "exits_MSR_READ", VCPU_STAT(exit_handler[EXIT_REASON_MSR_READ]) },
+	{ "exits_MSR_WRITE", VCPU_STAT(exit_handler[EXIT_REASON_MSR_WRITE]) },
+	{ "exits_INVALID_STATE", VCPU_STAT(exit_handler[EXIT_REASON_INVALID_STATE]) },
+	{ "exits_MSR_LOAD_FAIL", VCPU_STAT(exit_handler[EXIT_REASON_MSR_LOAD_FAIL]) },
+	{ "exits_MWAIT_INSTRUCTION", VCPU_STAT(exit_handler[EXIT_REASON_MWAIT_INSTRUCTION]) },
+	{ "exits_MONITOR_TRAP_FLAG", VCPU_STAT(exit_handler[EXIT_REASON_MONITOR_TRAP_FLAG]) },
+	{ "exits_MONITOR_INSTRUCTION", VCPU_STAT(exit_handler[EXIT_REASON_MONITOR_INSTRUCTION]) },
+	{ "exits_PAUSE_INSTRUCTION", VCPU_STAT(exit_handler[EXIT_REASON_PAUSE_INSTRUCTION]) },
+	{ "exits_MCE_DURING_VMENTRY", VCPU_STAT(exit_handler[EXIT_REASON_MCE_DURING_VMENTRY]) },
+	{ "exits_TPR_BELOW_THRESHOLD", VCPU_STAT(exit_handler[EXIT_REASON_TPR_BELOW_THRESHOLD]) },
+	{ "exits_APIC_ACCESS", VCPU_STAT(exit_handler[EXIT_REASON_APIC_ACCESS]) },
+	{ "exits_EOI_INDUCED", VCPU_STAT(exit_handler[EXIT_REASON_EOI_INDUCED]) },
+	{ "exits_GDTR_IDTR", VCPU_STAT(exit_handler[EXIT_REASON_GDTR_IDTR]) },
+	{ "exits_LDTR_TR", VCPU_STAT(exit_handler[EXIT_REASON_LDTR_TR]) },
+	{ "exits_EPT_VIOLATION", VCPU_STAT(exit_handler[EXIT_REASON_EPT_VIOLATION]) },
+	{ "exits_EPT_MISCONFIG", VCPU_STAT(exit_handler[EXIT_REASON_EPT_MISCONFIG]) },
+	{ "exits_INVEPT", VCPU_STAT(exit_handler[EXIT_REASON_INVEPT]) },
+	{ "exits_RDTSCP", VCPU_STAT(exit_handler[EXIT_REASON_RDTSCP]) },
+	{ "exits_PREEMPTION_TIMER", VCPU_STAT(exit_handler[EXIT_REASON_PREEMPTION_TIMER]) },
+	{ "exits_INVVPID", VCPU_STAT(exit_handler[EXIT_REASON_INVVPID]) },
+	{ "exits_WBINVD", VCPU_STAT(exit_handler[EXIT_REASON_WBINVD]) },
+	{ "exits_XSETBV", VCPU_STAT(exit_handler[EXIT_REASON_XSETBV]) },
+	{ "exits_APIC_WRITE", VCPU_STAT(exit_handler[EXIT_REASON_APIC_WRITE]) },
+	{ "exits_RDRAND", VCPU_STAT(exit_handler[EXIT_REASON_RDRAND]) },
+	{ "exits_INVPCID", VCPU_STAT(exit_handler[EXIT_REASON_INVPCID]) },
+	{ "exits_VMFUNC", VCPU_STAT(exit_handler[EXIT_REASON_VMFUNC]) },
+	{ "exits_ENCLS", VCPU_STAT(exit_handler[EXIT_REASON_ENCLS]) },
+	{ "exits_RDSEED", VCPU_STAT(exit_handler[EXIT_REASON_RDSEED]) },
+	{ "exits_PML_FULL", VCPU_STAT(exit_handler[EXIT_REASON_PML_FULL]) },
+	{ "exits_XSAVES", VCPU_STAT(exit_handler[EXIT_REASON_XSAVES]) },
+	{ "exits_XRSTORS", VCPU_STAT(exit_handler[EXIT_REASON_XRSTORS]) },
+	{ "exits_NVM", VCPU_STAT(nvm_exits) },
 	{ NULL }
 };
 
@@ -3065,6 +3133,7 @@ void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 					wbinvd_ipi, NULL, 1);
 	}
 
+	kvm_set_running_vcpu(vcpu);
 	kvm_x86_ops->vcpu_load(vcpu, cpu);
 
 	/* Apply any externally detected TSC adjustments (due to suspend) */
@@ -3087,8 +3156,8 @@ void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 			vcpu->arch.tsc_catchup = 1;
 		}
 
-		if (kvm_lapic_hv_timer_in_use(vcpu))
-			kvm_lapic_restart_hv_timer(vcpu);
+		if (kvm_lapic_hw_timer_in_use(vcpu))
+			kvm_lapic_restart_hw_timer(vcpu);
 
 		/*
 		 * On a host with synchronized TSC, there is no need to update
@@ -3149,6 +3218,7 @@ void kvm_arch_vcpu_put(struct kvm_vcpu *vcpu)
 	 * guest. do_debug expects dr6 to be cleared after it runs, do the same.
 	 */
 	set_debugreg(0, 6);
+	kvm_set_running_vcpu(NULL);
 }
 
 static int kvm_vcpu_ioctl_get_lapic(struct kvm_vcpu *vcpu,

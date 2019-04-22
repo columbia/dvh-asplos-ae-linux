@@ -1352,20 +1352,24 @@ TRACE_EVENT(kvm_avic_unaccelerated_access,
 		  __entry->vec)
 );
 
-TRACE_EVENT(kvm_hv_timer_state,
-		TP_PROTO(unsigned int vcpu_id, unsigned int hv_timer_in_use),
-		TP_ARGS(vcpu_id, hv_timer_in_use),
+TRACE_EVENT(kvm_hw_timer_state,
+		TP_PROTO(unsigned int vcpu_id, unsigned int timer, unsigned int hw_timer_in_use),
+		TP_ARGS(vcpu_id, timer, hw_timer_in_use),
 		TP_STRUCT__entry(
 			__field(unsigned int, vcpu_id)
-			__field(unsigned int, hv_timer_in_use)
+			__field(unsigned int, timer)
+			__field(unsigned int, hw_timer_in_use)
 			),
 		TP_fast_assign(
 			__entry->vcpu_id = vcpu_id;
-			__entry->hv_timer_in_use = hv_timer_in_use;
+			__entry->timer = timer;
+			__entry->hw_timer_in_use = hw_timer_in_use;
 			),
-		TP_printk("vcpu_id %x hv_timer %x\n",
+		TP_printk("vcpu_id %x %s timer %x\n",
 			__entry->vcpu_id,
-			__entry->hv_timer_in_use)
+			__entry->timer == 0 ? "hv" :
+					(__entry->timer == 1 ? "virt" : "unknown"),
+			__entry->hw_timer_in_use)
 );
 
 /*

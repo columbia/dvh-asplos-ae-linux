@@ -70,6 +70,8 @@
 #define APIC_BROADCAST			0xFF
 #define X2APIC_BROADCAST		0xFFFFFFFFul
 
+extern bool timer_opt_enable;
+
 static inline int apic_test_vector(int vec, void *bitmap)
 {
 	return test_bit(VEC_POS(vec), (bitmap) + REG_POS(vec));
@@ -1362,16 +1364,15 @@ static void apic_update_lvtt(struct kvm_lapic *apic)
 	}
 }
 
-static void apic_timer_expired(struct kvm_lapic *apic)
+static void __apic_timer_expired(struct kvm_lapic *apic, struct kvm_timer *ktimer)
 {
 	struct kvm_vcpu *vcpu = apic->vcpu;
 	struct swait_queue_head *q = &vcpu->wq;
-	struct kvm_timer *ktimer = &apic->lapic_timer;
 
-	if (atomic_read(&apic->lapic_timer.pending))
+	if (atomic_read(&ktimer->pending))
 		return;
 
-	atomic_inc(&apic->lapic_timer.pending);
+	atomic_inc(&ktimer->pending);
 	kvm_set_pending_timer(vcpu);
 
 	/*
@@ -1383,6 +1384,29 @@ static void apic_timer_expired(struct kvm_lapic *apic)
 
 	if (apic_lvtt_tscdeadline(apic))
 		ktimer->expired_tscdeadline = ktimer->tscdeadline;
+}
+
+static void apic_timer_expired(struct kvm_lapic *apic)
+{
+	__apic_timer_expired(apic, &apic->lapic_timer);
+}
+
+static void kvm_lapic_timer_expired(struct kvm_vcpu *vcpu)
+{
+	struct kvm_lapic *apic = vcpu->arch.apic;
+	/* We are running vtimer only for the current (nested) VM */
+	/* Note that we are not in the vcpu thread here, but in interrupt context
+	 */
+
+	if (is_guest_mode(vcpu)) {
+		__apic_timer_expired(apic, &apic->lapic_vtimer);
+		kvm_hypercall0(0x1010);
+		if (atomic_read(&apic->lapic_vtimer.pending) > 0) {
+			kvm_hypercall0(0x1011);
+		}
+	} else {
+		apic_timer_expired(vcpu->arch.apic);
+	}
 }
 
 /*
@@ -1433,9 +1457,10 @@ void wait_lapic_expire(struct kvm_vcpu *vcpu)
 			nsec_to_cycles(vcpu, lapic_timer_advance_ns)));
 }
 
-static void start_sw_tscdeadline(struct kvm_lapic *apic)
+static void start_sw_tscdeadline(struct kvm_lapic *apic,
+				 struct kvm_timer *ktimer)
 {
-	u64 guest_tsc, tscdeadline = apic->lapic_timer.tscdeadline;
+	u64 guest_tsc, tscdeadline = ktimer->tscdeadline;
 	u64 ns = 0;
 	ktime_t expire;
 	struct kvm_vcpu *vcpu = apic->vcpu;
@@ -1455,10 +1480,11 @@ static void start_sw_tscdeadline(struct kvm_lapic *apic)
 		do_div(ns, this_tsc_khz);
 		expire = ktime_add_ns(now, ns);
 		expire = ktime_sub_ns(expire, lapic_timer_advance_ns);
-		hrtimer_start(&apic->lapic_timer.timer,
+		/* We need to initialize secondary hrtimer */
+		hrtimer_start(&ktimer->timer,
 				expire, HRTIMER_MODE_ABS_PINNED);
 	} else
-		apic_timer_expired(apic);
+		__apic_timer_expired(apic, ktimer);
 
 	local_irq_restore(flags);
 }
@@ -1561,30 +1587,62 @@ static void start_sw_period(struct kvm_lapic *apic)
 		HRTIMER_MODE_ABS_PINNED);
 }
 
-bool kvm_lapic_hv_timer_in_use(struct kvm_vcpu *vcpu)
+bool kvm_lapic_hw_timer_in_use(struct kvm_vcpu *vcpu)
 {
+	bool ret = false;
+	struct kvm_lapic *apic = vcpu->arch.apic;
+	struct kvm_timer *ktimer = &apic->lapic_timer;
+	int timer;
+
 	if (!lapic_in_kernel(vcpu))
 		return false;
 
-	return vcpu->arch.apic->lapic_timer.hv_timer_in_use;
-}
-EXPORT_SYMBOL_GPL(kvm_lapic_hv_timer_in_use);
+	for (timer = 0; timer < HW_TIMER_MAX; timer++) {
+		ret |= ktimer->hw_timer_in_use[timer];
+	}
 
-static void cancel_hv_timer(struct kvm_lapic *apic)
+	return ret;
+}
+EXPORT_SYMBOL_GPL(kvm_lapic_hw_timer_in_use);
+
+static void __cancel_hw_timer(struct kvm_lapic *apic,
+			      struct kvm_timer *ktimer, int timer)
 {
 	WARN_ON(preemptible());
-	WARN_ON(!apic->lapic_timer.hv_timer_in_use);
-	kvm_x86_ops->cancel_hv_timer(apic->vcpu);
-	apic->lapic_timer.hv_timer_in_use = false;
+	WARN_ON(!ktimer->hw_timer_in_use[timer]);
+
+	/* This is touching the real hardware, so it doesn't matter what timer
+	 * (primiary or secondary) we are using it for
+	 */
+	if (timer == HV_TIMER)
+		kvm_x86_ops->cancel_hv_timer(apic->vcpu);
+	else if (timer == VIRT_TIMER)
+		kvm_x86_ops->cancel_virt_timer(apic->vcpu);
+
+	ktimer->hw_timer_in_use[timer] = false;
+	trace_kvm_hw_timer_state(apic->vcpu->vcpu_id, timer, false);
 }
 
-static bool start_hv_timer(struct kvm_lapic *apic)
+static void cancel_hw_timer(struct kvm_lapic *apic, int timer)
 {
-	struct kvm_timer *ktimer = &apic->lapic_timer;
+	__cancel_hw_timer(apic, &apic->lapic_timer, timer);
+}
+
+static bool start_hw_timer(struct kvm_lapic *apic, struct kvm_timer *ktimer,
+			   int timer)
+{
 	int r;
+	int (*set_hw_timer)(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc);
+
+	if (timer == HV_TIMER) {
+		set_hw_timer = kvm_x86_ops->set_hv_timer;
+	} else if (timer == VIRT_TIMER) {
+		set_hw_timer = kvm_x86_ops->set_virt_timer;
+	} else
+		return false;
 
 	WARN_ON(preemptible());
-	if (!kvm_x86_ops->set_hv_timer)
+	if (!set_hw_timer)
 		return false;
 
 	if (!apic_lvtt_period(apic) && atomic_read(&ktimer->pending))
@@ -1593,11 +1651,11 @@ static bool start_hv_timer(struct kvm_lapic *apic)
 	if (!ktimer->tscdeadline)
 		return false;
 
-	r = kvm_x86_ops->set_hv_timer(apic->vcpu, ktimer->tscdeadline);
+	r = set_hw_timer(apic->vcpu, ktimer->tscdeadline);
 	if (r < 0)
 		return false;
 
-	ktimer->hv_timer_in_use = true;
+	ktimer->hw_timer_in_use[timer] = true;
 	hrtimer_cancel(&ktimer->timer);
 
 	/*
@@ -1611,45 +1669,95 @@ static bool start_hv_timer(struct kvm_lapic *apic)
 		return false;
 	}
 
-	trace_kvm_hv_timer_state(apic->vcpu->vcpu_id, true);
+	trace_kvm_hw_timer_state(apic->vcpu->vcpu_id, timer, true);
 	return true;
+}
+
+static bool start_hv_timer(struct kvm_lapic *apic)
+{
+	return start_hw_timer(apic, &apic->lapic_timer, HV_TIMER);
+}
+
+static bool start_virt_timer(struct kvm_lapic *apic, struct kvm_timer *ktimer)
+{
+	return start_hw_timer(apic, ktimer, VIRT_TIMER);
+}
+
+void kvm_lapic_start_virt_timer(struct kvm_vcpu *vcpu)
+{
+	struct kvm_lapic *apic = vcpu->arch.apic;
+
+	start_virt_timer(apic, &apic->lapic_timer);
+}
+
+/* secondary means the emulated virtual timer for the VM.
+ * vtsc means we emulated the virtual timer using vTSC hardware
+ */
+void kvm_lapic_start_secondary_vtsc(struct kvm_vcpu *vcpu)
+{
+	struct kvm_lapic *apic = vcpu->arch.apic;
+
+	start_virt_timer(apic, &apic->lapic_vtimer);
+}
+
+/* FIXME: this would break if the timer mode for the secondary timer is NOT
+ * tscdeadline; start_sw_period() sets up primary timer always.
+ */
+static void __start_sw_timer(struct kvm_lapic *apic)
+{
+	struct kvm_timer *ktimer = &apic->lapic_timer;
+
+	if (!apic_lvtt_period(apic) && atomic_read(&ktimer->pending))
+		return;
+
+	if (apic_lvtt_period(apic) || apic_lvtt_oneshot(apic)) {
+		if (ktimer == &apic->lapic_vtimer)
+			BUG();
+		start_sw_period(apic);
+	} else if (apic_lvtt_tscdeadline(apic))
+		start_sw_tscdeadline(apic, ktimer);
 }
 
 static void start_sw_timer(struct kvm_lapic *apic)
 {
-	struct kvm_timer *ktimer = &apic->lapic_timer;
+	int timer;
 
 	WARN_ON(preemptible());
-	if (apic->lapic_timer.hv_timer_in_use)
-		cancel_hv_timer(apic);
-	if (!apic_lvtt_period(apic) && atomic_read(&ktimer->pending))
-		return;
 
-	if (apic_lvtt_period(apic) || apic_lvtt_oneshot(apic))
-		start_sw_period(apic);
-	else if (apic_lvtt_tscdeadline(apic))
-		start_sw_tscdeadline(apic);
-	trace_kvm_hv_timer_state(apic->vcpu->vcpu_id, false);
+	for (timer = 0; timer < HW_TIMER_MAX; timer++) {
+		if (apic->lapic_timer.hw_timer_in_use[timer])
+			cancel_hw_timer(apic, timer);
+	}
+
+	__start_sw_timer(apic);
 }
 
 static void restart_apic_timer(struct kvm_lapic *apic)
 {
+	bool hw_timer = false;
+
 	preempt_disable();
-	if (!start_hv_timer(apic))
+	if (timer_opt_enable)
+		hw_timer = start_virt_timer(apic, &apic->lapic_timer);
+	else
+		hw_timer = start_hv_timer(apic);
+
+	if (!hw_timer)
 		start_sw_timer(apic);
+
 	preempt_enable();
 }
 
-void kvm_lapic_expired_hv_timer(struct kvm_vcpu *vcpu)
+static void kvm_lapic_expired_hw_timer(struct kvm_vcpu *vcpu, int timer)
 {
 	struct kvm_lapic *apic = vcpu->arch.apic;
 
 	preempt_disable();
 	/* If the preempt notifier has already run, it also called apic_timer_expired */
-	if (!apic->lapic_timer.hv_timer_in_use)
+	if (!apic->lapic_timer.hw_timer_in_use[timer])
 		goto out;
 	WARN_ON(swait_active(&vcpu->wq));
-	cancel_hv_timer(apic);
+	cancel_hw_timer(apic, timer);
 	apic_timer_expired(apic);
 
 	if (apic_lvtt_period(apic) && apic->lapic_timer.period) {
@@ -1659,31 +1767,71 @@ void kvm_lapic_expired_hv_timer(struct kvm_vcpu *vcpu)
 out:
 	preempt_enable();
 }
+
+void kvm_lapic_expired_hv_timer(struct kvm_vcpu *vcpu)
+{
+	kvm_lapic_expired_hw_timer(vcpu, HV_TIMER);
+}
 EXPORT_SYMBOL_GPL(kvm_lapic_expired_hv_timer);
 
-void kvm_lapic_switch_to_hv_timer(struct kvm_vcpu *vcpu)
+void kvm_lapic_switch_to_hw_timer(struct kvm_vcpu *vcpu)
 {
 	restart_apic_timer(vcpu->arch.apic);
 }
-EXPORT_SYMBOL_GPL(kvm_lapic_switch_to_hv_timer);
+EXPORT_SYMBOL_GPL(kvm_lapic_switch_to_hw_timer);
 
 void kvm_lapic_switch_to_sw_timer(struct kvm_vcpu *vcpu)
 {
 	struct kvm_lapic *apic = vcpu->arch.apic;
 
 	preempt_disable();
-	/* Possibly the TSC deadline timer is not enabled yet */
-	if (apic->lapic_timer.hv_timer_in_use)
+	if (kvm_lapic_hw_timer_in_use(vcpu))
 		start_sw_timer(apic);
 	preempt_enable();
 }
 EXPORT_SYMBOL_GPL(kvm_lapic_switch_to_sw_timer);
 
-void kvm_lapic_restart_hv_timer(struct kvm_vcpu *vcpu)
+void kvm_lapic_switch_virt_to_sw_timer(struct kvm_vcpu *vcpu)
 {
 	struct kvm_lapic *apic = vcpu->arch.apic;
+	int timer = VIRT_TIMER;
 
-	WARN_ON(!apic->lapic_timer.hv_timer_in_use);
+	preempt_disable();
+	if (apic->lapic_timer.hw_timer_in_use[timer]) {
+		cancel_hw_timer(apic, timer);
+		__start_sw_timer(apic);
+	}
+	preempt_enable();
+}
+EXPORT_SYMBOL_GPL(kvm_lapic_switch_virt_to_sw_timer);
+
+void kvm_lapic_switch_secondary_vtsc_to_sw(struct kvm_vcpu *vcpu)
+{
+	struct kvm_lapic *apic = vcpu->arch.apic;
+	struct kvm_timer *ktimer = &apic->lapic_vtimer;
+	int timer = VIRT_TIMER;
+
+	preempt_disable();
+	if (ktimer->hw_timer_in_use[timer]) {
+		__cancel_hw_timer(apic, ktimer, timer);
+		__start_sw_timer(apic);
+	}
+	preempt_enable();
+}
+EXPORT_SYMBOL_GPL(kvm_lapic_switch_secondary_vtsc_to_sw);
+
+void kvm_lapic_restart_hw_timer(struct kvm_vcpu *vcpu)
+{
+	struct kvm_lapic *apic = vcpu->arch.apic;
+	bool hw_timer_in_use = false;
+	int timer;
+
+	for (timer = 0; timer < HW_TIMER_MAX; timer++)
+		hw_timer_in_use |= apic->lapic_timer.hw_timer_in_use[timer];
+
+	if (!hw_timer_in_use)
+		WARN_ON(1);
+
 	restart_apic_timer(apic);
 }
 
@@ -2070,6 +2218,7 @@ void kvm_lapic_reset(struct kvm_vcpu *vcpu, bool init_event)
 	apic->highest_isr_cache = -1;
 	update_divide_count(apic);
 	atomic_set(&apic->lapic_timer.pending, 0);
+	atomic_set(&apic->lapic_vtimer.pending, 0);
 	if (kvm_vcpu_is_bsp(vcpu))
 		kvm_lapic_set_base(vcpu,
 				vcpu->arch.apic_base | MSR_IA32_APICBASE_BSP);
@@ -2104,22 +2253,37 @@ static bool lapic_is_periodic(struct kvm_lapic *apic)
 int apic_has_pending_timer(struct kvm_vcpu *vcpu)
 {
 	struct kvm_lapic *apic = vcpu->arch.apic;
+	bool pending = false;
 
-	if (apic_enabled(apic) && apic_lvt_enabled(apic, APIC_LVTT))
-		return atomic_read(&apic->lapic_timer.pending);
+	if (apic_enabled(apic) && apic_lvt_enabled(apic, APIC_LVTT)) {
+		pending |= atomic_read(&apic->lapic_timer.pending);
+		pending |= atomic_read(&apic->lapic_vtimer.pending);
+	}
 
-	return 0;
+	return pending;
 }
 
+#define	APIC_LVTVT	0x321
 int kvm_apic_local_deliver(struct kvm_lapic *apic, int lvt_type)
 {
 	u32 reg = kvm_lapic_get_reg(apic, lvt_type);
 	int vector, mode, trig_mode;
 
+	/* There's no such thing as LVTVT for now */
+	if (lvt_type != APIC_LVTVT)
+		reg = kvm_lapic_get_reg(apic, lvt_type);
+
 	if (kvm_apic_hw_enabled(apic) && !(reg & APIC_LVT_MASKED)) {
 		vector = reg & APIC_VECTOR_MASK;
 		mode = reg & APIC_MODE_MASK;
 		trig_mode = reg & APIC_LVT_LEVEL_TRIGGER;
+
+		if (lvt_type == APIC_LVTVT) {
+			vector = 0xeb;
+			mode = 0;
+			trig_mode = 0;
+			kvm_hypercall0(0x1021);
+		}
 		return __apic_accept_irq(apic, mode, vector, 1, trig_mode,
 					NULL);
 	}
@@ -2225,13 +2389,26 @@ void kvm_inject_apic_timer_irqs(struct kvm_vcpu *vcpu)
 
 	if (atomic_read(&apic->lapic_timer.pending) > 0) {
 		kvm_apic_local_deliver(apic, APIC_LVTT);
-		if (apic_lvtt_tscdeadline(apic))
+		if (apic_lvtt_tscdeadline(apic)) {
+			trace_printk("injecting a timer irq to vcpu %d for deadline: 0x%llx\n",
+				     vcpu->vcpu_id, apic->lapic_timer.tscdeadline);
 			apic->lapic_timer.tscdeadline = 0;
+		}
 		if (apic_lvtt_oneshot(apic)) {
+			trace_printk("Huh... injecting a timer irq for one shot: 0x%llx, 0x%llx\n",
+				     apic->lapic_timer.tscdeadline,
+				     apic->lapic_timer.target_expiration
+				    );
 			apic->lapic_timer.tscdeadline = 0;
 			apic->lapic_timer.target_expiration = 0;
 		}
 		atomic_set(&apic->lapic_timer.pending, 0);
+	}
+
+	if (atomic_read(&apic->lapic_vtimer.pending) > 0) {
+		kvm_hypercall0(0x1012);
+		kvm_apic_local_deliver(apic, APIC_LVTVT);
+		atomic_set(&apic->lapic_vtimer.pending, 0);
 	}
 }
 
@@ -2617,4 +2794,22 @@ void kvm_lapic_exit(void)
 {
 	static_key_deferred_flush(&apic_hw_disabled);
 	static_key_deferred_flush(&apic_sw_disabled);
+}
+
+void kvm_lapic_vtimer_interrupt(void)
+{
+	struct kvm_vcpu *vcpu = kvm_get_running_vcpu();
+
+	if (!vcpu) {
+		trace_printk("vcpu is NULL. expect sw timer expiration\n");
+		return;
+	}
+
+	/* We don't need to do anything special such as canceling the vtimer
+	 * since vtimer is off on the expiration.
+	 * So call the function below instead of calling kvm_lapic_expired_virt_timer
+	 */
+	kvm_hypercall0(0x1000);
+	kvm_lapic_timer_expired(vcpu);
+	trace_printk("vtimer irq for vcpu %d\n", vcpu? vcpu->vcpu_id : 77);
 }

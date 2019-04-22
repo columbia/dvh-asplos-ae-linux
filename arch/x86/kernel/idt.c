@@ -131,6 +131,7 @@ static const __initconst struct idt_data apic_idts[] = {
 
 #ifdef CONFIG_X86_LOCAL_APIC
 	INTG(LOCAL_TIMER_VECTOR,	apic_timer_interrupt),
+	INTG(LOCAL_VTIMER_VECTOR,	apic_vtimer_interrupt),
 	INTG(X86_PLATFORM_IPI_VECTOR,	x86_platform_ipi),
 # ifdef CONFIG_HAVE_KVM
 	INTG(POSTED_INTR_VECTOR,	kvm_posted_intr_ipi),

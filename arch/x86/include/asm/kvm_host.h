@@ -35,6 +35,7 @@
 #include <asm/asm.h>
 #include <asm/kvm_page_track.h>
 #include <asm/hyperv-tlfs.h>
+#include <asm/vmx.h>
 
 #define KVM_MAX_VCPUS 288
 #define KVM_SOFT_MAX_VCPUS 240
@@ -899,6 +900,9 @@ struct kvm_vcpu_stat {
 	u64 irq_injections;
 	u64 nmi_injections;
 	u64 req_event;
+
+	u64 exit_handler[EXIT_REASON_XRSTORS+1];
+	u64 nvm_exits;
 };
 
 struct x86_instruction_info;
@@ -1085,6 +1089,9 @@ struct kvm_x86_ops {
 
 	int (*set_hv_timer)(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc);
 	void (*cancel_hv_timer)(struct kvm_vcpu *vcpu);
+
+	int (*set_virt_timer)(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc);
+	void (*cancel_virt_timer)(struct kvm_vcpu *vcpu);
 
 	void (*setup_mce)(struct kvm_vcpu *vcpu);
 
@@ -1479,5 +1486,8 @@ static inline int kvm_cpu_get_apicid(int mps_cpu)
 
 #define put_smstate(type, buf, offset, val)                      \
 	*(type *)((buf) + (offset) - 0x7e00) = val
+
+struct kvm_vcpu *kvm_get_running_vcpu(void);
+void kvm_lapic_vtimer_interrupt(void);
 
 #endif /* _ASM_X86_KVM_HOST_H */
