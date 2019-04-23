@@ -7496,6 +7496,15 @@ static void wakeup_handler(void)
 {
 	struct kvm_vcpu *vcpu;
 	int cpu = smp_processor_id();
+	struct list_head *head;
+
+	/* HACK: wake up vector is not supposed to come before spinlock/list init.
+	 * But *my* L1 might send wake-up vector regardless. Just
+	 * protect here not L2 be killed.
+	 */
+	head = &per_cpu(blocked_vcpu_on_cpu, cpu);
+	if (!head->prev)
+		return;
 
 	spin_lock(&per_cpu(blocked_vcpu_on_cpu_lock, cpu));
 	list_for_each_entry(vcpu, &per_cpu(blocked_vcpu_on_cpu, cpu),
