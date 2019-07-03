@@ -2767,7 +2767,8 @@ static void vmx_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	bool already_loaded = vmx->loaded_vmcs->cpu == cpu;
 
-	kvm_hypercall1(0xd1, __pa((vmx->vcpu.kvm->cpu_ir_table)));
+	if (!is_guest_mode(vcpu))
+		kvm_hypercall1(0xd1, __pa((vmx->vcpu.kvm->cpu_ir_table)));
 
 	if (!already_loaded) {
 		loaded_vmcs_clear(vmx->loaded_vmcs);
