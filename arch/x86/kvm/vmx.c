@@ -7563,7 +7563,7 @@ static void nested_wakeup_handler(void)
 	struct kvm_vcpu *vcpu = per_cpu(curr_vcpu, cpu);
 
 	vcpu->sync_shadow_pi_desc = true;
-
+	wakeup_handler();
 	/*FIXME: we eventually need to read nv from the pi_desc12,
 	 * but this kernel thread can't access the guest page.
 	 * Either map the page always or set it up in the destination vcpu */
@@ -10076,10 +10076,10 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 	/* FIXME: shouldn't we always sync? 
 	 * or at least when any PIR is set in the shadow?
 	 */
-	if (vcpu->sync_shadow_pi_desc) {
+	if (vcpu->sync_shadow_pi_desc && vmcs12) {
 		shadow_pi_desc = search_shadow_pi_desc(vcpu, vmcs12->posted_intr_desc_addr);
 		if (!shadow_pi_desc)
-			BUG();
+			goto sync_exit;
 
 		page = kvm_vcpu_gpa_to_page(vcpu, vmcs12->posted_intr_desc_addr);
 		if (is_error_page(page))
