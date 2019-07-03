@@ -10974,7 +10974,6 @@ static void nested_get_vmcs12_pages(struct kvm_vcpu *vcpu,
 			(PAGE_SIZE - 1)));
 
 		shadow_pi_desc = get_shadow_pi_desc(vcpu, vmcs12->posted_intr_desc_addr);
-		move_pir_on(shadow_pi_desc, vmx->nested.pi_desc);
 		/* TODO: maybe we don't have to set this up every time.
 		 * nv just need to be set once, and ndst can be set when the
 		 * vcpu is migrated to other pcpu */
@@ -10988,6 +10987,7 @@ static void nested_get_vmcs12_pages(struct kvm_vcpu *vcpu,
 
 		update_nv_ndst(shadow_pi_desc, POSTED_INTR_NESTED_VECTOR,
 			       cpu_physical_id(vcpu->kvm->vcpus[vmx->nested.pi_desc->ndst]->cpu));
+		move_pir_on(shadow_pi_desc, vmx->nested.pi_desc);
 
 		vmcs_write64(POSTED_INTR_DESC_ADDR, __pa(shadow_pi_desc));
 	}
@@ -12875,7 +12875,6 @@ static void nested_vmx_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason,
 		trace_printk("on exit, pi_desc23: 0x%llx, shadow_pi_desc13: 0x%llx\n",
 			     vmcs12->posted_intr_desc_addr, (u64)shadow_pi_desc);
 
-		move_pir_on(vmx->nested.pi_desc, shadow_pi_desc);
 		/* Even though the shadow_pi_desc is not written to vmcs02
 		 * anymore, hardware (e.g. recursively assigned device or IPI
 		 * hardware extension) will access the shadow_pi_desc to inject
@@ -12885,6 +12884,8 @@ static void nested_vmx_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason,
 		 */
 		update_nv_ndst(shadow_pi_desc, POSTED_INTR_NESTED_WAKEUP_VECTOR,
 			       shadow_pi_desc->ndst);
+
+		move_pir_on(vmx->nested.pi_desc, shadow_pi_desc);
 
 		kunmap(vmx->nested.pi_desc_page);
 		kvm_release_page_dirty(vmx->nested.pi_desc_page);
