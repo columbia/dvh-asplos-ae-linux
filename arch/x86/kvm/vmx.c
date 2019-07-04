@@ -12136,10 +12136,23 @@ static void sync_vmcs12(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12)
 		vmcs_read32(GUEST_INTERRUPTIBILITY_INFO);
 	vmcs12->guest_pending_dbg_exceptions =
 		vmcs_readl(GUEST_PENDING_DBG_EXCEPTIONS);
+
+	/* This is when L0 traps but L1 doesn't for HLT. The previous exit from
+	 * L2 was HLT, so mp_state is already HALTED.
+	 */
 	if (vcpu->arch.mp_state == KVM_MP_STATE_HALTED)
 		vmcs12->guest_activity_state = GUEST_ACTIVITY_HLT;
-	else
-		vmcs12->guest_activity_state = GUEST_ACTIVITY_ACTIVE;
+	else {
+		/*
+		 * If vmcs(GUIEST_ACTIVITY_STATE) is HLT, that means both L0 and
+		 * L1 don't want to trap HLT instruction. So mp_state never got
+		 * a chance to be set to KVM_MP_STATE_HALTED, but still L2
+		 * exited in HLT state to L1.
+		 * If it's not halt, then we can just copy the state.
+		 * Therefore, just getting state from vmcs covers all cases.
+		 */
+		vmcs12->guest_activity_state = vmcs_read32(GUEST_ACTIVITY_STATE);
+	}
 
 	if (nested_cpu_has_preemption_timer(vmcs12)) {
 		if (vmcs12->vm_exit_controls &
