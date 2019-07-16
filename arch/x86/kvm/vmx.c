@@ -11585,6 +11585,8 @@ static int prepare_vmcs02(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12,
 				entry_failure_code))
 		return 1;
 
+	 vmcs_writel(GUEST_CR3, vmcs12->guest_cr3);
+
 	if (!enable_ept)
 		vcpu->arch.walk_mmu->inject_page_fault = vmx_inject_page_fault_nested;
 
