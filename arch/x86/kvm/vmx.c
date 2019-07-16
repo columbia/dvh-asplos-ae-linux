@@ -5833,6 +5833,27 @@ static void vmx_complete_nested_posted_interrupt(struct kvm_vcpu *vcpu)
 	nested_mark_vmcs12_pages_dirty(vcpu);
 }
 
+static bool vmx_guest_apic_has_interrupt(struct kvm_vcpu *vcpu)
+{
+	struct vcpu_vmx *vmx = to_vmx(vcpu);
+	void *vapic_page;
+	u32 vppr;
+	int rvi;
+
+	if (WARN_ON_ONCE(!is_guest_mode(vcpu)) ||
+		!nested_cpu_has_vid(get_vmcs12(vcpu)) ||
+		WARN_ON_ONCE(!vmx->nested.virtual_apic_page))
+		return false;
+
+	rvi = vmcs_read16(GUEST_INTR_STATUS) & 0xff;
+
+	vapic_page = kmap(vmx->nested.virtual_apic_page);
+	vppr = *((u32 *)(vapic_page + APIC_PROCPRI));
+	kunmap(vmx->nested.virtual_apic_page);
+
+	return ((rvi & 0xf0) > (vppr & 0xf0));
+}
+
 static inline bool kvm_vcpu_trigger_posted_interrupt(struct kvm_vcpu *vcpu,
 						     bool nested)
 {
@@ -11578,6 +11599,8 @@ static int prepare_vmcs02(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12,
 			     vmcs12->vm_entry_instruction_len);
 		vmcs_write32(GUEST_INTERRUPTIBILITY_INFO,
 			     vmcs12->guest_interruptibility_info);
+		vmcs_write32(GUEST_ACTIVITY_STATE,
+			     vmcs12->guest_activity_state);
 		vmx->loaded_vmcs->nmi_known_unmasked =
 			!(vmcs12->guest_interruptibility_info & GUEST_INTR_STATE_NMI);
 	} else {
@@ -11793,6 +11816,8 @@ static int prepare_vmcs02(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12,
 	if (nested_vmx_load_cr3(vcpu, vmcs12->guest_cr3, nested_cpu_has_ept(vmcs12),
 				entry_failure_code))
 		return 1;
+
+	 vmcs_writel(GUEST_CR3, vmcs12->guest_cr3);
 
 	if (!enable_ept)
 		vcpu->arch.walk_mmu->inject_page_fault = vmx_inject_page_fault_nested;
@@ -12345,10 +12370,23 @@ static void sync_vmcs12(struct kvm_vcpu *vcpu, struct vmcs12 *vmcs12)
 		vmcs_read32(GUEST_INTERRUPTIBILITY_INFO);
 	vmcs12->guest_pending_dbg_exceptions =
 		vmcs_readl(GUEST_PENDING_DBG_EXCEPTIONS);
+
+	/* This is when L0 traps but L1 doesn't for HLT. The previous exit from
+	 * L2 was HLT, so mp_state is already HALTED.
+	 */
 	if (vcpu->arch.mp_state == KVM_MP_STATE_HALTED)
 		vmcs12->guest_activity_state = GUEST_ACTIVITY_HLT;
-	else
-		vmcs12->guest_activity_state = GUEST_ACTIVITY_ACTIVE;
+	else {
+		/*
+		 * If vmcs(GUIEST_ACTIVITY_STATE) is HLT, that means both L0 and
+		 * L1 don't want to trap HLT instruction. So mp_state never got
+		 * a chance to be set to KVM_MP_STATE_HALTED, but still L2
+		 * exited in HLT state to L1.
+		 * If it's not halt, then we can just copy the state.
+		 * Therefore, just getting state from vmcs covers all cases.
+		 */
+		vmcs12->guest_activity_state = vmcs_read32(GUEST_ACTIVITY_STATE);
+	}
 
 	if (nested_cpu_has_preemption_timer(vmcs12)) {
 		if (vmcs12->vm_exit_controls &
@@ -13307,6 +13345,7 @@ static struct kvm_x86_ops vmx_x86_ops __ro_after_init = {
 	.apicv_post_state_restore = vmx_apicv_post_state_restore,
 	.hwapic_irr_update = vmx_hwapic_irr_update,
 	.hwapic_isr_update = vmx_hwapic_isr_update,
+	.guest_apic_has_interrupt = vmx_guest_apic_has_interrupt,
 	.sync_pir_to_irr = vmx_sync_pir_to_irr,
 	.deliver_posted_interrupt = vmx_deliver_posted_interrupt,
 
