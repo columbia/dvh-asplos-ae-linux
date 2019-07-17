@@ -13698,7 +13698,7 @@ static struct kvm_x86_ops vmx_x86_ops __ro_after_init = {
 
 static struct dentry *dvh_debugfs_root;
 static bool dvh_ipi = false;
-static bool dvh_idle = false;
+bool dvh_idle = false;
 
 static void dvh_init(void)
 {
