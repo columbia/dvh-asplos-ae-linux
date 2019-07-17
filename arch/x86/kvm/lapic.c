@@ -70,7 +70,7 @@
 #define APIC_BROADCAST			0xFF
 #define X2APIC_BROADCAST		0xFFFFFFFFul
 
-extern bool timer_opt_enable;
+extern bool dvh_timer;
 
 static inline int apic_test_vector(int vec, void *bitmap)
 {
@@ -1776,7 +1776,7 @@ static void restart_apic_timer(struct kvm_lapic *apic)
 	bool hw_timer = false;
 
 	preempt_disable();
-	if (timer_opt_enable)
+	if (dvh_timer)
 		hw_timer = start_virt_timer(apic, &apic->lapic_timer);
 	else
 		hw_timer = start_hv_timer(apic);
