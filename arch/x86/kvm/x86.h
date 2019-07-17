@@ -318,7 +318,6 @@ static inline bool kvm_mwait_in_guest(struct kvm *kvm)
 
 static inline bool kvm_hlt_in_guest(struct kvm *kvm)
 {
-	return true;
 	return kvm->arch.hlt_in_guest;
 }
 
