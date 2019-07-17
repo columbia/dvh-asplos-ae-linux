@@ -4272,10 +4272,6 @@ split_irqchip_unlock:
 			kvm->arch.pause_in_guest = true;
 		r = 0;
 		break;
-	case KVM_CAP_X86_DISABLE_HLT:
-		kvm->arch.hlt_in_guest = true;
-		r = 0;
-		break;
 	default:
 		r = -EINVAL;
 		break;

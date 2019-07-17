@@ -950,8 +950,6 @@ struct kvm_ppc_resize_hpt {
 #define KVM_CAP_HYPERV_EVENTFD 154
 #define KVM_CAP_HYPERV_TLBFLUSH 155
 
-#define KVM_CAP_X86_DISABLE_HLT 165
-
 #ifdef KVM_CAP_IRQ_ROUTING
 
 struct kvm_irq_routing_irqchip {
