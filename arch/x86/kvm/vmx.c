@@ -66,6 +66,8 @@
 MODULE_AUTHOR("Qumranet");
 MODULE_LICENSE("GPL");
 
+bool dvh_timer = false;
+
 static const struct x86_cpu_id vmx_cpu_id[] = {
 	X86_FEATURE_MATCH(X86_FEATURE_VMX),
 	{}
@@ -196,7 +198,6 @@ struct kvm_vmx {
 	bool ept_identity_pagetable_done;
 	gpa_t ept_identity_map_addr;
 };
-bool timer_opt_enable = 1;
 
 #define NR_AUTOLOAD_MSRS 8
 
@@ -2807,7 +2808,7 @@ static void vmx_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 	vmx->host_pkru = read_pkru();
 	vmx->host_debugctlmsr = get_debugctlmsr();
 
-	if (timer_opt_enable)
+	if (dvh_timer)
 		kvm_lapic_start_virt_timer(vcpu);
 }
 
@@ -2832,7 +2833,7 @@ static void vmx_vcpu_put(struct kvm_vcpu *vcpu)
 	__vmx_load_host_state(to_vmx(vcpu));
 
 	/* We only cancel virt timer, not hv_timer, which is not ticking */
-	if (timer_opt_enable)
+	if (dvh_timer)
 		kvm_lapic_switch_virt_to_sw_timer(vcpu);
 }
 
@@ -12727,7 +12728,7 @@ static void vmx_sync_tsc_deadline(struct vcpu_vmx *vmx)
 	u32 low;
 	u32 high;
 
-	if (!timer_opt_enable)
+	if (!dvh_timer)
 		return;
 
 	/* read from the virtual tsc register */
@@ -13242,46 +13243,8 @@ static struct kvm_x86_ops vmx_x86_ops __ro_after_init = {
 	.enable_smi_window = enable_smi_window,
 };
 
-static ssize_t timer_fs_write(struct file *file, const char __user *buffer,
-		size_t count, loff_t *pos)
-{
-	char command[64];
-	int len;
-
- 	len = min(count, sizeof(command) - 1);
-	if (strncpy_from_user(command, buffer, len) < 0)
-		return -EFAULT;
-	command[len] = '\0';
-
- #if 0
-	if (strncmp(command, "enable", 6) == 0) {
-	} else if (strncmp(command, "disable", 7) == 0) {
-	} else if (strncmp(command, "reset", 5) == 0) {
-	}
-#endif
-	if (strncmp(command, "y", 1) == 0)
-		timer_opt_enable = 1;
-	else if (strncmp(command, "1", 1) == 0)
-		timer_opt_enable = 1;
-	else if (strncmp(command, "n", 1) == 0)
-		timer_opt_enable = 0;
-	else if (strncmp(command, "0", 1) == 0)
-		timer_opt_enable = 0;
-
-	printk("timer_opt_enable: %d\n", timer_opt_enable);
- 	/* ignore the rest of the buffer, only one command at a time */
-	*pos += count;
-	return count;
-}
-
-static int timer_open(struct seq_file *m, void *v)
-{
-	return 0;
-}
-
 static struct dentry *dvh_debugfs_root;
 static bool dvh_ipi = false;
-static bool dvh_timer = false;
 bool dvh_idle = false;
 
 static void dvh_init(void)
@@ -13296,29 +13259,6 @@ static void dvh_init(void)
 	debugfs_create_bool("virtual_timer", 0666, dvh_debugfs_root, &dvh_timer);
 	debugfs_create_bool("virtual_idle", 0666, dvh_debugfs_root, &dvh_idle);
 	printk("DVH debugfs is created successfully\n");
-}
-
-static int timer_fs_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, timer_open, NULL);
-}
-
- static const struct file_operations stats_fs_fops = {
-	.owner = THIS_MODULE,
-	.open = timer_fs_open,
-	.read = seq_read,
-	.write = timer_fs_write,
-};
-
-static void timer_opt(void)
-{
-	struct dentry *dentry;
-	dentry = debugfs_create_file("timer_opt", 0666, kvm_debugfs_dir,
-				     NULL, &stats_fs_fops);
-	if (!dentry)
-		kvm_err("error creating timer debugfs dentry");
-	else
-		kvm_info("timer debugfs up and running");
 }
 
 static int __init vmx_init(void)
@@ -13360,7 +13300,6 @@ static int __init vmx_init(void)
 		return r;
 
 	dvh_init();
-	timer_opt();
 #ifdef CONFIG_KEXEC_CORE
 	rcu_assign_pointer(crash_vmclear_loaded_vmcss,
 			   crash_vmclear_local_loaded_vmcss);
