@@ -68,7 +68,7 @@ MODULE_AUTHOR("Qumranet");
 MODULE_LICENSE("GPL");
 
 static bool dvh_ipi = false;
-int timer_opt_enable = 1;
+static bool dvh_timer = false;
 
 static const struct x86_cpu_id vmx_cpu_id[] = {
 	X86_FEATURE_MATCH(X86_FEATURE_VMX),
@@ -9119,7 +9119,7 @@ static bool handle_nvm_msr(struct kvm_vcpu *vcpu, u32 exit_reason)
 	case X2APIC_ICR:
 		return dvh_ipi && handle_nvm_x2apic_icr(vcpu);
 	case APIC_TSC_DEADLINE:
-		return timer_opt_enable && handle_nvm_tsc_deadline(vcpu);
+		return dvh_timer && handle_nvm_tsc_deadline(vcpu);
 	default:
 		break;
 	}
@@ -13410,43 +13410,7 @@ static struct kvm_x86_ops vmx_x86_ops __ro_after_init = {
 	.get_l2_tsc_offset = vmx_get_l2_tsc_offset,
 };
 
-static ssize_t timer_fs_write(struct file *file, const char __user *buffer,
-		size_t count, loff_t *pos)
-{
-	char command[64];
-	int len;
-
- 	len = min(count, sizeof(command) - 1);
-	if (strncpy_from_user(command, buffer, len) < 0)
-		return -EFAULT;
-	command[len] = '\0';
-
- #if 0
-	if (strncmp(command, "enable", 6) == 0) {
-	} else if (strncmp(command, "disable", 7) == 0) {
-	} else if (strncmp(command, "reset", 5) == 0) {
-	}
-#endif
-	if (strncmp(command, "1", 1) == 0)
-		timer_opt_enable = 1;
-	else if (strncmp(command, "0", 1) == 0)
-		timer_opt_enable = 0;
-	else if (strncmp(command, "2", 1) == 0)
-		timer_opt_enable = 2;
-
-	printk("timer_opt_enable: %d\n", timer_opt_enable);
- 	/* ignore the rest of the buffer, only one command at a time */
-	*pos += count;
-	return count;
-}
-
-static int timer_open(struct seq_file *m, void *v)
-{
-	return 0;
-}
-
 static struct dentry *dvh_debugfs_root;
-static bool dvh_timer = false;
 static bool dvh_idle = false;
 
 static void dvh_init(void)
@@ -13461,32 +13425,6 @@ static void dvh_init(void)
 	debugfs_create_bool("virtual_timer", 0666, dvh_debugfs_root, &dvh_timer);
 	debugfs_create_bool("virtual_idle", 0666, dvh_debugfs_root, &dvh_idle);
 	printk("DVH debugfs is created successfully\n");
-}
-
-static int timer_fs_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, timer_open, NULL);
-}
-
- static const struct file_operations stats_fs_fops = {
-	.owner = THIS_MODULE,
-	.open = timer_fs_open,
-	.read = seq_read,
-	.write = timer_fs_write,
-};
-
-static void timer_opt(void)
-{
-	struct dentry *dentry;
-	dentry = debugfs_create_file("timer_opt", 0666, kvm_debugfs_dir,
-				     NULL, &stats_fs_fops);
-	if (!dentry)
-		kvm_err("error creating timer debugfs dentry");
-	else {
-		kvm_info("timer debugfs up and running");
-		timer_opt_enable = 1;
-		kvm_info("timer_opt_enable: 1");
-	}
 }
 
 static int __init vmx_init(void)
@@ -13528,7 +13466,6 @@ static int __init vmx_init(void)
 		return r;
 
 	dvh_init();
-	timer_opt();
 #ifdef CONFIG_KEXEC_CORE
 	rcu_assign_pointer(crash_vmclear_loaded_vmcss,
 			   crash_vmclear_local_loaded_vmcss);
