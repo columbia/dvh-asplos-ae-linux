@@ -13505,6 +13505,25 @@ static void ipi_opt(void)
 		kvm_info("ipi debugfs up and running");
 }
 
+static struct dentry *dvh_debugfs_root;
+static bool dvh_ipi = false;
+static bool dvh_timer = false;
+static bool dvh_idle = false;
+
+static void dvh_init(void)
+{
+	dvh_debugfs_root = debugfs_create_dir("dvh", NULL);
+	if (!dvh_debugfs_root) {
+		printk("WARNING: dvh debugfs is not created\n");
+		return;
+	}
+
+	debugfs_create_bool("virtual_ipi", 0666, dvh_debugfs_root, &dvh_ipi);
+	debugfs_create_bool("virtual_timer", 0666, dvh_debugfs_root, &dvh_timer);
+	debugfs_create_bool("virtual_idle", 0666, dvh_debugfs_root, &dvh_idle);
+	printk("DVH debugfs is created successfully\n");
+}
+
 static int timer_fs_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, timer_open, NULL);
@@ -13569,6 +13588,7 @@ static int __init vmx_init(void)
 	if (r)
 		return r;
 
+	dvh_init();
 	ipi_opt();
 	timer_opt();
 #ifdef CONFIG_KEXEC_CORE
