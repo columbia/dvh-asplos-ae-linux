@@ -12165,6 +12165,7 @@ static int nested_vmx_run(struct kvm_vcpu *vcpu, bool launch)
 	if ((vmcs12->guest_activity_state == GUEST_ACTIVITY_HLT) &&
 	    !(vmcs12->vm_entry_intr_info_field & INTR_INFO_VALID_MASK)) {
 		vmx->nested.nested_run_pending = 0;
+		trace_printk("nVM goes to HLT\n");
 		return kvm_vcpu_halt(vcpu);
 	}
 	return 1;
