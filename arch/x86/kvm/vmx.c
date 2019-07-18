@@ -9146,13 +9146,6 @@ static bool nested_vmx_exit_reflected(struct kvm_vcpu *vcpu, u32 exit_reason)
 	 */
 	nested_mark_vmcs12_pages_dirty(vcpu);
 
-	trace_kvm_nested_vmexit(kvm_rip_read(vcpu), exit_reason,
-				vmcs_readl(EXIT_QUALIFICATION),
-				vmx->idt_vectoring_info,
-				intr_info,
-				vmcs_read32(VM_EXIT_INTR_ERROR_CODE),
-				KVM_ISA_VMX);
-
 	switch (exit_reason) {
 	case EXIT_REASON_EXCEPTION_NMI:
 		if (is_nmi(intr_info))
@@ -9561,6 +9554,12 @@ static int vmx_handle_exit(struct kvm_vcpu *vcpu)
 
 	if (is_guest_mode(vcpu) && nested_vmx_exit_reflected(vcpu, exit_reason)) {
 		++vcpu->stat.nvm_exits;
+		trace_kvm_nested_vmexit(kvm_rip_read(vcpu), exit_reason,
+					vmcs_readl(EXIT_QUALIFICATION),
+					vmx->idt_vectoring_info,
+					vmcs_read32(VM_EXIT_INTR_INFO),
+					vmcs_read32(VM_EXIT_INTR_ERROR_CODE),
+					KVM_ISA_VMX);
 		return nested_vmx_reflect_vmexit(vcpu, exit_reason);
 	}
 
@@ -12211,7 +12210,7 @@ static int nested_vmx_run(struct kvm_vcpu *vcpu, bool launch)
 		return ret;
 	}
 
-	trace_kvm_nested_vmrun(0, 0, 0, 0, 0, 0);
+	trace_kvm_nested_vmrun(kvm_rip_read(vcpu), 0, 0, 0, 0, 0);
 
 	/* Read the table pointer that L1 set for L2 from vmcs12.
 	 * With PV, we already got the pointer through hypercall and mapped.
