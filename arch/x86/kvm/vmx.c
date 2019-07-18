@@ -9296,13 +9296,6 @@ static bool nested_vmx_exit_reflected(struct kvm_vcpu *vcpu, u32 exit_reason)
 	 */
 	nested_mark_vmcs12_pages_dirty(vcpu);
 
-	trace_kvm_nested_vmexit(kvm_rip_read(vcpu), exit_reason,
-				vmcs_readl(EXIT_QUALIFICATION),
-				vmx->idt_vectoring_info,
-				intr_info,
-				vmcs_read32(VM_EXIT_INTR_ERROR_CODE),
-				KVM_ISA_VMX);
-
 	switch (exit_reason) {
 	case EXIT_REASON_EXCEPTION_NMI:
 		if (is_nmi(intr_info))
@@ -9713,8 +9706,16 @@ static int vmx_handle_exit(struct kvm_vcpu *vcpu)
 		return handle_invalid_guest_state(vcpu);
 
 	vmx->nvm_emulation_done = 0;
-	if (is_guest_mode(vcpu) && nested_vmx_exit_reflected(vcpu, exit_reason))
+	if (is_guest_mode(vcpu) && nested_vmx_exit_reflected(vcpu, exit_reason)) {
+		trace_kvm_nested_vmexit(kvm_rip_read(vcpu), exit_reason,
+					vmcs_readl(EXIT_QUALIFICATION),
+					vmx->idt_vectoring_info,
+					vmcs_read32(VM_EXIT_INTR_INFO),
+					vmcs_read32(VM_EXIT_INTR_ERROR_CODE),
+					KVM_ISA_VMX);
+
 		return nested_vmx_reflect_vmexit(vcpu, exit_reason);
+	}
 
 	if (vmx->nvm_emulation_done)
 		return kvm_skip_emulated_instruction(vcpu);
@@ -12156,6 +12157,7 @@ static int nested_vmx_run(struct kvm_vcpu *vcpu, bool launch)
 		return ret;
 	}
 
+	trace_kvm_nested_vmrun(kvm_rip_read(vcpu), 0, 0, 0, 0, 0);
 	/*
 	 * If we're entering a halted L2 vcpu and the L2 vcpu won't be woken
 	 * by event injection, halt vcpu.
