@@ -1680,7 +1680,7 @@ static bool start_hw_timer(struct kvm_lapic *apic, struct kvm_timer *ktimer,
 	 */
 	if (!apic_lvtt_period(apic) && (r || atomic_read(&ktimer->pending))) {
 		if (r)
-			apic_timer_expired(apic);
+			__apic_timer_expired(apic, ktimer);
 		return false;
 	}
 
