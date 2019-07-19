@@ -13069,7 +13069,11 @@ static int __vmx_set_hw_timer(struct kvm_vcpu *vcpu, u64 guest_deadline_tsc,
 
 	vmx = to_vmx(vcpu);
 	tscl = rdtsc();
-	guest_tscl = kvm_read_l1_tsc(vcpu, tscl);
+
+	if (is_guest_mode(vcpu))
+		guest_tscl = kvm_read_l2_tsc(vcpu, tscl);
+	else
+		guest_tscl = kvm_read_l1_tsc(vcpu, tscl);
 	delta_tsc = max(guest_deadline_tsc, guest_tscl) - guest_tscl;
 	lapic_timer_advance_cycles = nsec_to_cycles(vcpu, lapic_timer_advance_ns);
 
