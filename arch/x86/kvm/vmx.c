@@ -12055,16 +12055,19 @@ static int enter_vmx_non_root_mode(struct kvm_vcpu *vcpu)
 	set_vtimer_nvm_entry_pre(vcpu);
 	vmx_switch_vmcs(vcpu, &vmx->nested.vmcs02);
 	enter_guest_mode(vcpu);
-	/* We set vtimer after changing the guest_mode flag so that the expiring
-	 * timer is for nvm. Maybe we should stop the timer before, and change
-	 * to the guest mode, then program vtimer?
-	 */
-	set_vtimer_nvm_entry_post(vcpu);
-
 	vmx_segment_cache_clear(vmx);
 
 	if (vmcs12->cpu_based_vm_exec_control & CPU_BASED_USE_TSC_OFFSETING)
 		vcpu->arch.tsc_offset += vmcs12->tsc_offset;
+
+
+	/* We set vtimer after changing the guest_mode flag so that the expiring
+	 * timer is for nvm. Maybe we should stop the timer before, and change
+	 * to the guest mode, then program vtimer?
+	 *
+	 * Let's call this after setting tsc_offset
+	 */
+	set_vtimer_nvm_entry_post(vcpu);
 
 	r = EXIT_REASON_INVALID_STATE;
 	if (prepare_vmcs02(vcpu, vmcs12, &exit_qual))
