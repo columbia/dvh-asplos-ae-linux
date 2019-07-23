@@ -12237,10 +12237,14 @@ static int nested_vmx_run(struct kvm_vcpu *vcpu, bool launch)
 	kvm_hypercall1(0xd2, __pa((vmx->vcpu.kvm->cpu_ir_table + 6)));
 
 	/*
-	 * If we're entering a halted L2 vcpu and the L2 vcpu won't be woken
-	 * by event injection, halt vcpu.
+	 * If the L0 wants to trap HLT instruction, and
+	 * if we're entering a halted L2 vcpu, which implies that the guest
+	 * hypervisor doesn't want to trap HLT instruction, and the L2 vcpu
+	 * won't be woken by event injection, halt vcpu. Otherwise, we will
+	 * meaninglessly enter and exit L2 iteratively.
 	 */
-	if ((vmcs12->guest_activity_state == GUEST_ACTIVITY_HLT) &&
+	if (!kvm_hlt_in_guest(vcpu->kvm) &&
+	    (vmcs12->guest_activity_state == GUEST_ACTIVITY_HLT) &&
 	    !(vmcs12->vm_entry_intr_info_field & INTR_INFO_VALID_MASK)) {
 		vmx->nested.nested_run_pending = 0;
 		return kvm_vcpu_halt(vcpu);
