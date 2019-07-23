@@ -1522,7 +1522,8 @@ static void restart_sw_timer(struct  kvm_lapic *apic) {
 	vtimer->tscdeadline = vtsc;
 
 	hrtimer_cancel(&vtimer->timer);
-	__start_sw_tscdeadline(apic, vtimer);
+	if (vtsc)
+		__start_sw_tscdeadline(apic, vtimer);
 }
 
 static void update_target_expiration(struct kvm_lapic *apic, uint32_t old_divisor)
@@ -2344,6 +2345,8 @@ void kvm_inject_apic_timer_irqs(struct kvm_vcpu *vcpu)
 		trace_printk("vtimer is pending. Let's inject\n");
 		kvm_apic_local_deliver(apic, APIC_LVTVT);
 		apic->lapic_vtimer.tscdeadline = 0;
+		kvm_lapic_reg_write(apic, APIC_V_TSC_DEADLINE2, 0);
+		kvm_lapic_reg_write(apic, APIC_V_TSC_DEADLINE, 0);
 		atomic_set(&apic->lapic_vtimer.pending, 0);
 	}
 }
