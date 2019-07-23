@@ -1783,7 +1783,9 @@ static void restart_secondary_timer_sw(struct kvm_lapic *apic)
 	vtimer->tscdeadline = vtsc;
 
 	hrtimer_cancel(&vtimer->timer);
-	__start_sw_tscdeadline(apic, vtimer, true);
+	
+	if (vtimer->tscdeadline)
+		__start_sw_tscdeadline(apic, vtimer, true);
 }
 
 static void restart_apic_timer(struct kvm_lapic *apic)
@@ -2517,6 +2519,9 @@ void kvm_inject_apic_timer_irqs(struct kvm_vcpu *vcpu)
 
 	if (atomic_read(&apic->lapic_vtimer.pending) > 0) {
 		kvm_apic_local_deliver(apic, APIC_LVTVT);
+		apic->lapic_vtimer.tscdeadline = 0;
+		kvm_lapic_reg_write(apic, APIC_V_TSC_DEADLINE2, 0);
+		kvm_lapic_reg_write(apic, APIC_V_TSC_DEADLINE, 0);
 		atomic_set(&apic->lapic_vtimer.pending, 0);
 	}
 }
