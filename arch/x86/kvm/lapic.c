@@ -1853,7 +1853,7 @@ static void __switch_hw_to_sw_timer(struct kvm_lapic *apic,
 				  bool in_schedule)
 {
 	if (ktimer->hw_timer_in_use[timer]) {
-		cancel_hw_timer(apic, timer);
+		__cancel_hw_timer(apic, ktimer, timer);
 		__start_sw_timer_internal(apic, ktimer, in_schedule);
 	}
 }
