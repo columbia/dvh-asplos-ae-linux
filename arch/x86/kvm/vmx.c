@@ -10817,6 +10817,8 @@ static inline bool nested_vmx_prepare_msr_bitmap(struct kvm_vcpu *vcpu,
 	struct page *page;
 	unsigned long *msr_bitmap_l1;
 	unsigned long *msr_bitmap_l0 = to_vmx(vcpu)->nested.vmcs02.msr_bitmap;
+	bool fs_base = !msr_write_intercepted_l01(vcpu, MSR_FS_BASE);
+
 	/*
 	 * pred_cmd & spec_ctrl are trying to verify two things:
 	 *
@@ -10881,6 +10883,13 @@ static inline bool nested_vmx_prepare_msr_bitmap(struct kvm_vcpu *vcpu,
 			X2APIC_MSR(APIC_SELF_IPI),
 			MSR_TYPE_W);
 	}
+
+
+	if (fs_base)
+		nested_vmx_disable_intercept_for_msr(
+						     msr_bitmap_l1, msr_bitmap_l0,
+						     MSR_FS_BASE,
+						     MSR_TYPE_W);
 
 	if (spec_ctrl)
 		nested_vmx_disable_intercept_for_msr(
