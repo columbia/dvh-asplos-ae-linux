@@ -13449,11 +13449,11 @@ static int vmx_update_pi_irte(struct kvm *kvm, unsigned int host_irq,
 			}
 		}
 
-		tmp_pi_desc_addr = e->pi_desc_addr;
-		e->pi_desc_addr = 0;
+		tmp_pi_desc_addr = e->pi_desc_host;
+		e->pi_desc_host = 0;
 		/* As a temporary solution, just get the MSI translation */
 		kvm_set_msi_irq(kvm, e, &irq);
-		e->pi_desc_addr = tmp_pi_desc_addr;
+		e->pi_desc_host = tmp_pi_desc_addr;
 		if (!kvm_intr_is_single_vcpu(kvm, &irq, &vcpu)) {
 			/*
 			 * Make sure the IRTE is in remapped mode if
