@@ -900,6 +900,7 @@ struct kvm_vcpu_stat {
 
 	u64 exit_handler[EXIT_REASON_XRSTORS+1];
 	u64 nvm_exits;
+	u64 lvtt_exits;
 };
 
 struct x86_instruction_info;

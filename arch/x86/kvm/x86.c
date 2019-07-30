@@ -264,6 +264,7 @@ struct kvm_stats_debugfs_item debugfs_entries[] = {
 	{ "exits_XSAVES", VCPU_STAT(exit_handler[EXIT_REASON_XSAVES]) },
 	{ "exits_XRSTORS", VCPU_STAT(exit_handler[EXIT_REASON_XRSTORS]) },
 	{ "exits_NVM", VCPU_STAT(nvm_exits) },
+	{ "exits_LVTT", VCPU_STAT(lvtt_exits) },
 	{ NULL }
 };
 
