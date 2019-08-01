@@ -67,6 +67,7 @@ MODULE_AUTHOR("Qumranet");
 MODULE_LICENSE("GPL");
 
 bool dvh_timer = false;
+static bool dvh_fs_base = false;
 
 static const struct x86_cpu_id vmx_cpu_id[] = {
 	X86_FEATURE_MATCH(X86_FEATURE_VMX),
@@ -13718,7 +13719,6 @@ static struct kvm_x86_ops vmx_x86_ops __ro_after_init = {
 static struct dentry *dvh_debugfs_root;
 static bool dvh_ipi = false;
 bool dvh_idle = false;
-static bool dvh_fs_base = false;
 
 static void dvh_init(void)
 {
