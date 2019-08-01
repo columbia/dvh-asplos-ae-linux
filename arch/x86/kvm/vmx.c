@@ -69,6 +69,7 @@ MODULE_LICENSE("GPL");
 
 static bool dvh_ipi = false;
 static bool dvh_timer = false;
+static bool dvh_fs_base = false;
 
 static const struct x86_cpu_id vmx_cpu_id[] = {
 	X86_FEATURE_MATCH(X86_FEATURE_VMX),
@@ -11134,7 +11135,7 @@ static inline bool nested_vmx_prepare_msr_bitmap(struct kvm_vcpu *vcpu,
 	}
 
 
-	if (fs_base)
+	if (dvh_fs_base && fs_base)
 		nested_vmx_disable_intercept_for_msr(
 						     msr_bitmap_l1, msr_bitmap_l0,
 						     MSR_FS_BASE,
@@ -13438,6 +13439,7 @@ static void dvh_init(void)
 	debugfs_create_bool("virtual_ipi", 0666, dvh_debugfs_root, &dvh_ipi);
 	debugfs_create_bool("virtual_timer", 0666, dvh_debugfs_root, &dvh_timer);
 	debugfs_create_bool("virtual_idle", 0666, dvh_debugfs_root, &dvh_idle);
+	debugfs_create_bool("fs_base", 0666, dvh_debugfs_root, &dvh_fs_base);
 	printk("DVH debugfs is created successfully\n");
 }
 
